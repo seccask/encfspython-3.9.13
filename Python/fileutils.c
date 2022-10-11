@@ -25,6 +25,12 @@ extern int winerror_to_errno(int);
 #include <fcntl.h>
 #endif /* HAVE_FCNTL_H */
 
+//< SECCASK_MODIFIED_START
+#include "internal/seccask_encfs.h"
+#include "internal/seccask_encfs_aes.h"
+#include "internal/seccask_encfs_chacha.h"
+//< SECCASK_MODIFIED_END
+
 #ifdef O_CLOEXEC
 /* Does open() support the O_CLOEXEC flag? Possible values:
 
@@ -1727,6 +1733,61 @@ _Py_read(int fd, void *buf, size_t count)
         return -1;
     }
 
+    //< SECCASK_MODIFIED_START
+    fd_entry_t *entry = g_hash_table_lookup(g_seccask_fd_hashtable, &fd);
+    if (entry != NULL && g_component_key != NULL) {
+        if (g_seccask_encfs_is_debug_mode) {
+            // printf("ENCFSENCFS &g_component_key = %p\n", g_component_key);
+            printf("ENCFSENCFS read  %s, %d = %d\n", entry->filename, count, n);
+        }
+        if (is_in_dir(entry->filename, "/home/mlcask/sgx/test-source") && !entry->is_binary) {
+            if (g_seccask_encfs_is_debug_mode) {
+                printf("ENCFSENCFS read  In test-source folder & read as text. Do direct read\n");
+            }
+        } else {
+            if (g_seccask_encfs_is_debug_mode) {
+                if (is_in_dir(entry->filename, "/home/mlcask/sgx/test-source")) {
+                    printf("ENCFSENCFS read  BEFOR ENC");
+                } else {
+                    printf("ENCFSENCFS read  BEFOR DEC");
+                }
+                for (int i = 0; i < n; i++) {
+                    printf(" %02x", ((unsigned char *)buf)[i]);
+                }
+                printf("\n");
+            }
+
+            void *dec_buf;
+            if (strcmp(g_seccask_cipher_mode, "AES-256-CTR") == 0) {
+                dec_buf = aes_ctr_encdec(entry->state, fd, buf, n, n);
+
+            } else if (strcmp(g_seccask_cipher_mode, "Chacha20") == 0) {
+                chacha_goto(entry->state, fd, n);
+                dec_buf = chacha_encdec(entry->state, buf, n);
+
+            } else {
+                printf("ERROR: Unknown cipher mode %s\n", g_seccask_cipher_mode);
+                exit(1);
+            }
+
+            memcpy((void *)buf, dec_buf, n);
+            free(dec_buf);
+
+            if (g_seccask_encfs_is_debug_mode) {
+                if (is_in_dir(entry->filename, "/home/mlcask/sgx/test-source")) {
+                    printf("ENCFSENCFS read  AFTER ENC");
+                } else {
+                    printf("ENCFSENCFS read  AFTER DEC");
+                }
+                for (int i = 0; i < n; i++) {
+                    printf(" %02x", ((unsigned char *)buf)[i]);
+                }
+                printf("\n");
+            }
+        }
+    }
+    //< SECCASK_MODIFIED_END
+
     return n;
 }
 
@@ -1761,14 +1822,52 @@ _Py_write_impl(int fd, const void *buf, size_t count, int gil_held)
         count = _PY_WRITE_MAX;
     }
 
+    //< SECCASK_MODIFIED_START
+    void *enc_buf = buf;
+    fd_entry_t *entry = g_hash_table_lookup(g_seccask_fd_hashtable, &fd);
+    if (entry != NULL && g_component_key != NULL) {
+        if (g_seccask_encfs_is_debug_mode) {
+            printf("ENCFSENCFS write %s, %d\n", entry->filename, count);
+        }
+        if (is_in_dir(entry->filename, "/home/mlcask/sgx/test-source")) {
+            if (g_seccask_encfs_is_debug_mode) {
+                printf("ENCFSENCFS write In test-source folder. Do direct write\n");
+            }
+        } else if (is_in_dir(entry->filename, "/home/mlcask/seccask-temp/venv")) {
+            if (g_seccask_encfs_is_debug_mode) {
+                printf("ENCFSENCFS write In venv folder. Do direct write since it's already encrypted\n");
+            }
+        } else {
+            if (g_seccask_encfs_is_debug_mode) {
+                printf("ENCFSENCFS write BEFOR ENC");
+                for (int i = 0; i < count; i++) {
+                    printf(" %02x", ((unsigned char *)enc_buf)[i]);
+                }
+                printf("\n");
+            }
+
+            if (strcmp(g_seccask_cipher_mode, "AES-256-CTR") == 0) {
+                enc_buf = aes_ctr_encdec(entry->state, fd, buf, count, 0);
+
+            } else if (strcmp(g_seccask_cipher_mode, "Chacha20") == 0) {
+                chacha_goto(entry->state, fd, 0);
+                enc_buf = chacha_encdec(entry->state, buf, count);
+
+            } else {
+                printf("ERROR: Unknown cipher mode %s\n", g_seccask_cipher_mode);
+                exit(1);
+            }
+        }
+    }
+
     if (gil_held) {
         do {
             Py_BEGIN_ALLOW_THREADS
             errno = 0;
 #ifdef MS_WINDOWS
-            n = write(fd, buf, (int)count);
+            n = write(fd, enc_buf, (int)count); // MODIFIED_HERE
 #else
-            n = write(fd, buf, count);
+            n = write(fd, enc_buf, count);      // MODIFIED_HERE
 #endif
             /* save/restore errno because PyErr_CheckSignals()
              * and PyErr_SetFromErrno() can modify it */
@@ -1781,14 +1880,34 @@ _Py_write_impl(int fd, const void *buf, size_t count, int gil_held)
         do {
             errno = 0;
 #ifdef MS_WINDOWS
-            n = write(fd, buf, (int)count);
+            n = write(fd, enc_buf, (int)count); // MODIFIED_HERE
 #else
-            n = write(fd, buf, count);
+            n = write(fd, enc_buf, count);      // MODIFIED_HERE
 #endif
             err = errno;
         } while (n < 0 && err == EINTR);
     }
     _Py_END_SUPPRESS_IPH
+
+    if (entry != NULL && g_component_key != NULL) {
+        // printf("ENCFSENCFS write(\"%s, %d\") = %d\n", entry->filename, count, n);
+        if (is_in_dir(entry->filename, "/home/mlcask/sgx/test-source")) {
+            // do nothing
+        } else if (is_in_dir(entry->filename, "/home/mlcask/seccask-temp/venv")) {
+            // do nothing
+        } else {
+            if (g_seccask_encfs_is_debug_mode) {
+                printf("ENCFSENCFS write AFTER ENC");
+                for (int i = 0; i < count; i++) {
+                    printf(" %02x", ((unsigned char *)enc_buf)[i]);
+                }
+                printf("\n");
+            }
+
+            free(enc_buf);
+        }
+    }
+    //< SECCASK_MODIFIED_END
 
     if (async_err) {
         /* write() was interrupted by a signal (failed with EINTR)

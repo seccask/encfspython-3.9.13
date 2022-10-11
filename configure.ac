@@ -4026,6 +4026,12 @@ AC_CHECK_FUNCS(forkpty,,
    )
 )
 
+# SECCASK_MODIFIED: check for glib 2.0
+AC_CHECK_LIB(glib-2.0,g_free, [AC_DEFINE(HAVE_GLIB) [
+  LIBS="$LIBS -lglib-2.0 -lssl -lcrypto"
+  CFLAGS="`pkg-config --cflags glib-2.0` $CFLAGS"
+]])
+
 # check for long file support functions
 AC_CHECK_FUNCS(fseek64 fseeko fstatvfs ftell64 ftello statvfs)
 

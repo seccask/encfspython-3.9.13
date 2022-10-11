@@ -12954,6 +12954,52 @@ fi
 done
 
 
+# SECCASK_MODIFIED: check for glib 2.0
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for g_free in -lglib-2.0" >&5
+$as_echo_n "checking for g_free in -lglib-2.0... " >&6; }
+if ${ac_cv_lib_glib_2_0_g_free+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lglib-2.0  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char g_free ();
+int
+main ()
+{
+return g_free ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_glib_2_0_g_free=yes
+else
+  ac_cv_lib_glib_2_0_g_free=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_glib_2_0_g_free" >&5
+$as_echo "$ac_cv_lib_glib_2_0_g_free" >&6; }
+if test "x$ac_cv_lib_glib_2_0_g_free" = xyes; then :
+  $as_echo "#define HAVE_GLIB 1" >>confdefs.h
+
+  LIBS="$LIBS -lglib-2.0 -lssl -lcrypto"
+  CFLAGS="`pkg-config --cflags glib-2.0` $CFLAGS"
+
+fi
+
+
 # check for long file support functions
 for ac_func in fseek64 fseeko fstatvfs ftell64 ftello statvfs
 do :

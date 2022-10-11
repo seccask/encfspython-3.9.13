@@ -20,6 +20,14 @@
 #include <stddef.h> /* For offsetof */
 #include "_iomodule.h"
 
+//< SECCASK_MODIFIED_START
+#include "internal/seccask_encfs.h"
+GHashTable *g_seccask_fd_hashtable = NULL;
+int g_seccask_encfs_is_debug_mode = 0;
+// Cipher Mode: "AES-256-CTR", "Chacha20"
+char *g_seccask_cipher_mode = "AES-256-CTR";
+//< SECCASK_MODIFIED_END
+
 /*
  * Known likely problems:
  *
@@ -120,6 +128,18 @@ internal_close(fileio *self)
             save_errno = errno;
         _Py_END_SUPPRESS_IPH
         Py_END_ALLOW_THREADS
+
+        //< SECCASK_MODIFIED_START
+        fd_entry_t *entry = g_hash_table_lookup(g_seccask_fd_hashtable, &fd);
+        if (entry != NULL) {
+            if (g_seccask_encfs_is_debug_mode) {
+                printf("ENCFSENCFS close %s, %d = %d\n", entry->filename, fd, err);
+            }
+
+            fd_entry_free(entry);
+            g_hash_table_remove(g_seccask_fd_hashtable, &fd);
+        }
+        //< SECCASK_MODIFIED_END
     }
     if (err < 0) {
         errno = save_errno;
@@ -223,6 +243,10 @@ _io_FileIO___init___impl(fileio *self, PyObject *nameobj, const char *mode,
                          int closefd, PyObject *opener)
 /*[clinic end generated code: output=23413f68e6484bbd input=1596c9157a042a39]*/
 {
+//< SECCASK_MODIFIED_START
+int is_binary = 0;
+//< SECCASK_MODIFIED_END
+
 #ifdef MS_WINDOWS
     Py_UNICODE *widename = NULL;
 #else
@@ -328,6 +352,9 @@ _Py_COMP_DIAG_POP
             flags |= O_APPEND | O_CREAT;
             break;
         case 'b':
+            //< SECCASK_MODIFIED_START
+            is_binary = 1;
+            //< SECCASK_MODIFIED_END
             break;
         case '+':
             if (plus)
@@ -435,6 +462,36 @@ _Py_COMP_DIAG_POP
         if (_Py_set_inheritable(self->fd, 0, atomic_flag_works) < 0)
             goto error;
 #endif
+
+        //< SECCASK_MODIFIED_START
+        if (g_seccask_fd_hashtable == NULL) {
+            // Since this is only called once, do all initialization here
+            g_seccask_fd_hashtable = g_hash_table_new_full(
+                    g_int_hash, 
+                    g_int_equal, 
+                    g_free, 
+                    NULL);
+
+            g_seccask_encfs_is_debug_mode = getenv("SECCASK_DEBUG_ENCFS") != NULL;
+        };
+
+        // printf("LOGLOGLOG open(\"%s\") = %d\n", name, self->fd);
+        if (is_in_dir(name, "/home/mlcask/seccask-temp") || 
+            is_in_dir(name, "/home/mlcask/sgx/test-source") ||
+            is_in_dir(name, "././")) {
+            if (g_seccask_encfs_is_debug_mode) {
+                printf("ENCFSENCFS open  %s = %d\n", name, self->fd);
+            }
+
+            int *key = g_new0(gint, 1);
+            *key = self->fd;
+            g_hash_table_insert(
+                g_seccask_fd_hashtable, 
+                (gpointer)key,
+                (gpointer)fd_entry_new(name, g_component_key, is_binary)
+            );
+        }
+        //< SECCASK_MODIFIED_END
     }
 
     self->blksize = DEFAULT_BUFFER_SIZE;

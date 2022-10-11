@@ -338,6 +338,8 @@ PARSER_HEADERS= \
 # Python
 
 PYTHON_OBJS=	\
+		Python/__seccask_encfs_aes.o \
+		Python/__seccask_encfs_chacha.o \
 		Python/_warnings.o \
 		Python/Python-ast.o \
 		Python/asdl.o \
@@ -1022,6 +1024,9 @@ regen-typeslots:
 # Header files
 
 PYTHON_HEADERS= \
+		$(srcdir)/Include/internal/seccask_encfs.h \
+		$(srcdir)/Include/internal/seccask_encfs_aes.h \
+		$(srcdir)/Include/internal/seccask_encfs_chacha.h \
 		$(srcdir)/Include/Python.h \
 		$(srcdir)/Include/abstract.h \
 		$(srcdir)/Include/asdl.h \
