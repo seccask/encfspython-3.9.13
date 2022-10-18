@@ -329,12 +329,38 @@ _Py_COMP_DIAG_POP
             self->created = 1;
             self->writable = 1;
             flags |= O_EXCL | O_CREAT;
+            // SECCASK_MODIFIED
+            if (name) {
+                if (is_in_dir(name, "/home/mlcask/seccask-temp") || 
+                    is_in_dir(name, "/home/mlcask/sgx/test-source") ||
+                    is_in_dir(name, "././") ||
+                    is_in_dir(name, "/home/mlcask/sgx/raw-test-source") || 
+                    is_in_dir(name, "/home/mlcask/sgx/enc-test-source")) {
+                    if (g_seccask_encfs_is_debug_mode) {
+                        printf("ENCFSENCFS open add + to %s - %s\n", name, "x");
+                    }
+                    self->readable = 1;
+                }
+            }
             break;
         case 'r':
             if (rwa)
                 goto bad_mode;
             rwa = 1;
             self->readable = 1;
+            // SECCASK_MODIFIED
+            if (name) {
+                if (is_in_dir(name, "/home/mlcask/seccask-temp") || 
+                    is_in_dir(name, "/home/mlcask/sgx/test-source") ||
+                    is_in_dir(name, "././") ||
+                    is_in_dir(name, "/home/mlcask/sgx/raw-test-source") || 
+                    is_in_dir(name, "/home/mlcask/sgx/enc-test-source")) {
+                    if (g_seccask_encfs_is_debug_mode) {
+                        printf("ENCFSENCFS open add + to %s - %s\n", name, "r");
+                    }
+                    self->writable = 1;
+                }
+            }
             break;
         case 'w':
             if (rwa)
@@ -342,6 +368,19 @@ _Py_COMP_DIAG_POP
             rwa = 1;
             self->writable = 1;
             flags |= O_CREAT | O_TRUNC;
+            // SECCASK_MODIFIED
+            if (name) {
+                if (is_in_dir(name, "/home/mlcask/seccask-temp") || 
+                    is_in_dir(name, "/home/mlcask/sgx/test-source") ||
+                    is_in_dir(name, "././") ||
+                    is_in_dir(name, "/home/mlcask/sgx/raw-test-source") || 
+                    is_in_dir(name, "/home/mlcask/sgx/enc-test-source")) {
+                    if (g_seccask_encfs_is_debug_mode) {
+                        printf("ENCFSENCFS open add + to %s - %s\n", name, "w");
+                    }
+                    self->readable = 1;
+                }
+            }
             break;
         case 'a':
             if (rwa)
@@ -350,6 +389,19 @@ _Py_COMP_DIAG_POP
             self->writable = 1;
             self->appending = 1;
             flags |= O_APPEND | O_CREAT;
+            // SECCASK_MODIFIED
+            if (name) {
+                if (is_in_dir(name, "/home/mlcask/seccask-temp") || 
+                    is_in_dir(name, "/home/mlcask/sgx/test-source") ||
+                    is_in_dir(name, "././") ||
+                    is_in_dir(name, "/home/mlcask/sgx/raw-test-source") || 
+                    is_in_dir(name, "/home/mlcask/sgx/enc-test-source")) {
+                    if (g_seccask_encfs_is_debug_mode) {
+                        printf("ENCFSENCFS open add + to %s - %s\n", name, "a");
+                    }
+                    self->readable = 1;
+                }
+            }
             break;
         case 'b':
             //< SECCASK_MODIFIED_START
@@ -476,9 +528,13 @@ _Py_COMP_DIAG_POP
         };
 
         // printf("LOGLOGLOG open(\"%s\") = %d\n", name, self->fd);
-        if (is_in_dir(name, "/home/mlcask/seccask-temp") || 
-            is_in_dir(name, "/home/mlcask/sgx/test-source") ||
-            is_in_dir(name, "././")) {
+        if ((
+                is_in_dir(name, "/home/mlcask/seccask-temp") || 
+                is_in_dir(name, "/home/mlcask/sgx/test-source") ||
+                is_in_dir(name, "././") ||
+                is_in_dir(name, "/home/mlcask/sgx/raw-test-source") || 
+                is_in_dir(name, "/home/mlcask/sgx/enc-test-source")
+            ) && !ends_with(name, ".hash")) {
             if (g_seccask_encfs_is_debug_mode) {
                 printf("ENCFSENCFS open  %s = %d\n", name, self->fd);
             }

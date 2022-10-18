@@ -1740,9 +1740,14 @@ _Py_read(int fd, void *buf, size_t count)
             // printf("ENCFSENCFS &g_component_key = %p\n", g_component_key);
             printf("ENCFSENCFS read  %s, %d = %d\n", entry->filename, count, n);
         }
-        if (is_in_dir(entry->filename, "/home/mlcask/sgx/test-source") && !entry->is_binary) {
+        // if (is_in_dir(entry->filename, "/home/mlcask/sgx/test-source") && !entry->is_binary) {
+        //     if (g_seccask_encfs_is_debug_mode) {
+        //         printf("ENCFSENCFS read  In test-source folder & read as text. Do direct read\n");
+        //     }
+        // } else 
+        if (is_in_dir(entry->filename, "/home/mlcask/sgx/raw-test-source")) {
             if (g_seccask_encfs_is_debug_mode) {
-                printf("ENCFSENCFS read  In test-source folder & read as text. Do direct read\n");
+                printf("ENCFSENCFS read  Prepare test source. Do direct read\n");
             }
         } else {
             if (g_seccask_encfs_is_debug_mode) {
@@ -1751,27 +1756,84 @@ _Py_read(int fd, void *buf, size_t count)
                 } else {
                     printf("ENCFSENCFS read  BEFOR DEC");
                 }
-                for (int i = 0; i < n; i++) {
+                for (int i = 0; i < (n < NUM_DGB_PRINT_BYTES ? n : NUM_DGB_PRINT_BYTES); i++) {
                     printf(" %02x", ((unsigned char *)buf)[i]);
                 }
                 printf("\n");
             }
 
-            void *dec_buf;
-            if (strcmp(g_seccask_cipher_mode, "AES-256-CTR") == 0) {
-                dec_buf = aes_ctr_encdec(entry->state, fd, buf, n, n);
+            if (!is_in_dir(entry->filename, "./")) {    // Packing ZIP. Do not check hash
+                off_t cur_offset = lseek(fd, 0, SEEK_CUR);
 
-            } else if (strcmp(g_seccask_cipher_mode, "Chacha20") == 0) {
-                chacha_goto(entry->state, fd, n);
-                dec_buf = chacha_encdec(entry->state, buf, n);
+                char *hash_file_name = (char*) malloc(strlen(entry->filename) + 6);
+                strcpy(hash_file_name, entry->filename);
+                strcat(hash_file_name, ".hash");
+                FILE *hash_file;
 
-            } else {
-                printf("ERROR: Unknown cipher mode %s\n", g_seccask_cipher_mode);
-                exit(1);
+                hash_file = fopen(hash_file_name, "rb");
+                if (hash_file == NULL) {
+                    printf("UNAUTHORIZED MODIFICATION DETECTED !!! UNAUTHORIZED MODIFICATION DETECTED !!!\n");
+                    printf("FILE: %s\n", entry->filename);
+                    printf("REASON: Cannot open hash file %s\n", hash_file_name);
+                    exit(1);
+                }
+
+                // Compute hash of ciphertext
+                unsigned char *hash = (unsigned char*) malloc(SHA256_DIGEST_LENGTH);
+                unsigned char *correct_hash = (unsigned char*) malloc(SHA256_DIGEST_LENGTH);
+                unsigned char *block_buf = (unsigned char *) malloc(FS_BLOCK_SIZE);
+                uint32_t start_block, end_block;
+                get_fs_block_range(cur_offset - n, n, &start_block, &end_block);
+                if (g_seccask_encfs_is_debug_mode) {
+                    printf("ENCFSENCFS read  hash start_block = %d, end_block = %d\n", start_block, end_block);
+                }
+                for (uint32_t i = start_block; i <= end_block; i++) {
+                    memset(block_buf, 0, FS_BLOCK_SIZE);
+                    lseek(fd, i * FS_BLOCK_SIZE, SEEK_SET);
+                    read(fd, block_buf, FS_BLOCK_SIZE);
+                    seccask_sha256(block_buf, FS_BLOCK_SIZE, hash);
+
+                    fseek(hash_file, i * SHA256_DIGEST_LENGTH, SEEK_SET);
+                    fread(correct_hash, 1, SHA256_DIGEST_LENGTH, hash_file);
+
+                    if (memcmp(hash, correct_hash, SHA256_DIGEST_LENGTH) != 0) {
+                        printf("UNAUTHORIZED MODIFICATION DETECTED !!! UNAUTHORIZED MODIFICATION DETECTED !!!\n");
+                        printf("FILE: %s\n", entry->filename);
+                        printf("REASON: Hash of block %d is incorrect\n", i);
+                        exit(1);
+                    }
+                }
+
+                if (g_seccask_encfs_is_debug_mode) {
+                    printf("ENCFSENCFS read  hash end\n");
+                }
+
+                fclose(hash_file);
+                free(hash_file_name);
+
+                free(hash);
+                free(correct_hash);
+                free(block_buf);
+
+                lseek(fd, cur_offset, SEEK_SET);
             }
 
-            memcpy((void *)buf, dec_buf, n);
-            free(dec_buf);
+            void *dec_buf;
+            if (n > 0) {
+                if (strcmp(g_seccask_cipher_mode, "AES-256-CTR") == 0) {
+                    dec_buf = aes_ctr_encdec(entry->state, fd, buf, n, n);
+
+                } else if (strcmp(g_seccask_cipher_mode, "Chacha20") == 0) {
+                    chacha_goto(entry->state, fd, n);
+                    dec_buf = chacha_encdec(entry->state, buf, n);
+
+                } else {
+                    printf("ERROR: Unknown cipher mode %s\n", g_seccask_cipher_mode);
+                    exit(1);
+                }
+                memcpy((void *)buf, dec_buf, n);
+                free(dec_buf);
+            }
 
             if (g_seccask_encfs_is_debug_mode) {
                 if (is_in_dir(entry->filename, "/home/mlcask/sgx/test-source")) {
@@ -1779,7 +1841,7 @@ _Py_read(int fd, void *buf, size_t count)
                 } else {
                     printf("ENCFSENCFS read  AFTER DEC");
                 }
-                for (int i = 0; i < n; i++) {
+                for (int i = 0; i < (n < NUM_DGB_PRINT_BYTES ? n : NUM_DGB_PRINT_BYTES); i++) {
                     printf(" %02x", ((unsigned char *)buf)[i]);
                 }
                 printf("\n");
@@ -1829,33 +1891,37 @@ _Py_write_impl(int fd, const void *buf, size_t count, int gil_held)
         if (g_seccask_encfs_is_debug_mode) {
             printf("ENCFSENCFS write %s, %d\n", entry->filename, count);
         }
-        if (is_in_dir(entry->filename, "/home/mlcask/sgx/test-source")) {
-            if (g_seccask_encfs_is_debug_mode) {
-                printf("ENCFSENCFS write In test-source folder. Do direct write\n");
-            }
-        } else if (is_in_dir(entry->filename, "/home/mlcask/seccask-temp/venv")) {
-            if (g_seccask_encfs_is_debug_mode) {
-                printf("ENCFSENCFS write In venv folder. Do direct write since it's already encrypted\n");
-            }
-        } else {
+        // if (is_in_dir(entry->filename, "/home/mlcask/sgx/test-source")) {
+        //     if (g_seccask_encfs_is_debug_mode) {
+        //         printf("ENCFSENCFS write In test-source folder. Do direct write\n");
+        //     }
+        // } else 
+        // if (is_in_dir(entry->filename, "/home/mlcask/seccask-temp/venv")) {
+        //     if (g_seccask_encfs_is_debug_mode) {
+        //         printf("ENCFSENCFS write In venv folder. Do direct write since it's already encrypted\n");
+        //     }
+        // } else 
+        {
             if (g_seccask_encfs_is_debug_mode) {
                 printf("ENCFSENCFS write BEFOR ENC");
-                for (int i = 0; i < count; i++) {
+                for (int i = 0; i < (count < NUM_DGB_PRINT_BYTES ? count : NUM_DGB_PRINT_BYTES); i++) {
                     printf(" %02x", ((unsigned char *)enc_buf)[i]);
                 }
                 printf("\n");
             }
 
-            if (strcmp(g_seccask_cipher_mode, "AES-256-CTR") == 0) {
-                enc_buf = aes_ctr_encdec(entry->state, fd, buf, count, 0);
+            if (count > 0) {
+                if (strcmp(g_seccask_cipher_mode, "AES-256-CTR") == 0) {
+                    enc_buf = aes_ctr_encdec(entry->state, fd, buf, count, 0);
 
-            } else if (strcmp(g_seccask_cipher_mode, "Chacha20") == 0) {
-                chacha_goto(entry->state, fd, 0);
-                enc_buf = chacha_encdec(entry->state, buf, count);
+                } else if (strcmp(g_seccask_cipher_mode, "Chacha20") == 0) {
+                    chacha_goto(entry->state, fd, 0);
+                    enc_buf = chacha_encdec(entry->state, buf, count);
 
-            } else {
-                printf("ERROR: Unknown cipher mode %s\n", g_seccask_cipher_mode);
-                exit(1);
+                } else {
+                    printf("ERROR: Unknown cipher mode %s\n", g_seccask_cipher_mode);
+                    exit(1);
+                }
             }
         }
     }
@@ -1891,20 +1957,103 @@ _Py_write_impl(int fd, const void *buf, size_t count, int gil_held)
 
     if (entry != NULL && g_component_key != NULL) {
         // printf("ENCFSENCFS write(\"%s, %d\") = %d\n", entry->filename, count, n);
-        if (is_in_dir(entry->filename, "/home/mlcask/sgx/test-source")) {
-            // do nothing
-        } else if (is_in_dir(entry->filename, "/home/mlcask/seccask-temp/venv")) {
-            // do nothing
-        } else {
+        // if (is_in_dir(entry->filename, "/home/mlcask/sgx/test-source")) {
+        //     // do nothing
+        // } else 
+        // if (is_in_dir(entry->filename, "/home/mlcask/seccask-temp/venv")) {
+        //     // do nothing
+        // } else 
+        {
             if (g_seccask_encfs_is_debug_mode) {
+                if (is_in_dir(entry->filename, "/home/mlcask/sgx/enc-test-source")) {
+                    printf("ENCFSENCFS write Prepare test source\n");
+                }
+
                 printf("ENCFSENCFS write AFTER ENC");
-                for (int i = 0; i < count; i++) {
+                for (int i = 0; i < (count < NUM_DGB_PRINT_BYTES ? count : NUM_DGB_PRINT_BYTES); i++) {
                     printf(" %02x", ((unsigned char *)enc_buf)[i]);
                 }
                 printf("\n");
             }
 
-            free(enc_buf);
+            if (enc_buf != buf && count > 0) {
+                _Py_BEGIN_SUPPRESS_IPH
+                free(enc_buf);
+            
+                off_t cur_offset = lseek(fd, 0, SEEK_CUR);
+
+                char *hash_file_name = (char*) malloc(strlen(entry->filename) + 6);
+                strcpy(hash_file_name, entry->filename);
+                strcat(hash_file_name, ".hash");
+                FILE *hash_file;
+
+                // Create hash file if not exist
+                hash_file = fopen(hash_file_name, "a");
+                fclose(hash_file);
+                hash_file = fopen(hash_file_name, "r+b");
+
+                // fsync(fd);
+
+                // Compute hash of ciphertext
+                unsigned char *hash = (unsigned char*) malloc(SHA256_DIGEST_LENGTH);
+                unsigned char *enc_hash = (unsigned char*) malloc(SHA256_DIGEST_LENGTH);
+                unsigned char *block_buf = (unsigned char *) malloc(FS_BLOCK_SIZE);
+                uint32_t start_block, end_block;
+                ssize_t hash_n;
+                get_fs_block_range(cur_offset - count, count, &start_block, &end_block);
+                if (g_seccask_encfs_is_debug_mode) {
+                    printf("ENCFSENCFS write hash start_block = %d, end_block = %d\n", start_block, end_block);
+                }
+                for (uint32_t i = start_block; i <= end_block; i++) {
+                    memset(block_buf, 0, FS_BLOCK_SIZE);
+
+                    errno = 0;
+                    lseek(fd, i * FS_BLOCK_SIZE, SEEK_SET);
+                    if (errno) {
+                        printf("ERROR: lseek() failed with %s\n", strerror(errno));
+                        exit(1);
+                    }
+                    if (gil_held) {
+                        Py_BEGIN_ALLOW_THREADS
+                        hash_n = read(fd, block_buf, FS_BLOCK_SIZE);
+                        Py_END_ALLOW_THREADS
+                    } else {
+                        hash_n = read(fd, block_buf, FS_BLOCK_SIZE);
+                    }
+                    if (hash_n < 0) {
+                        printf("ERROR: read() failed with %s\n", strerror(errno));
+                        exit(1);
+                    }
+
+                    // if (g_seccask_encfs_is_debug_mode) {
+                    //   printf("ENCFSENCFS write block=");
+                    //   for (int i = 0; i < NUM_DGB_PRINT_BYTES; i++) {
+                    //     printf(" %02x", block_buf[i]);
+                    //   }
+                    //   printf("\n");
+                    //   fflush(stdout);
+                    // }
+
+                    seccask_sha256(block_buf, FS_BLOCK_SIZE, hash);
+
+                    fseek(hash_file, i * SHA256_DIGEST_LENGTH, SEEK_SET);
+                    fwrite(hash, SHA256_DIGEST_LENGTH, 1, hash_file);
+                }
+
+                if (g_seccask_encfs_is_debug_mode) {
+                    printf("ENCFSENCFS write hash end\n");
+                }
+
+                fclose(hash_file);
+
+                free(hash_file_name);
+                free(hash);
+                free(enc_hash);
+                free(block_buf);
+
+                lseek(fd, cur_offset, SEEK_SET);
+                _Py_END_SUPPRESS_IPH
+            }
         }
     }
     //< SECCASK_MODIFIED_END

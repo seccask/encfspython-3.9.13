@@ -4,9 +4,13 @@
 #include <glib.h>
 #include <openssl/aes.h>
 #include <openssl/evp.h>
+#include <openssl/sha.h>
 #include <openssl/err.h>
 
-#define NUM_DGB_PRINT_BYTES 20
+#define NUM_DGB_PRINT_BYTES 32
+
+// Filesystem block size: 4 KB
+#define FS_BLOCK_SIZE 4096
 
 typedef unsigned char uint8_t;
 typedef unsigned int uint32_t;
@@ -31,8 +35,34 @@ extern char *g_seccask_cipher_mode;
  * @param directory the directory
  * @return 1 if path is in the directory, 0 otherwise
  */
-inline int is_in_dir(const char *path, const char *directory) {
+static inline int is_in_dir(const char *path, const char *directory) {
   return strncmp(path, directory, strlen(directory)) == 0;
+}
+
+static inline int ends_with(const char *str, const char *suffix) {
+  size_t str_len = strlen(str);
+  size_t suffix_len = strlen(suffix);
+
+  return (str_len >= suffix_len) && (!memcmp(str + str_len - suffix_len, suffix, suffix_len));
+}
+
+/**
+ * @brief Compute SHA256 hash of the input data
+ * 
+ * @param in 
+ * @param in_len 
+ * @param out 
+ */
+static inline void seccask_sha256(uint8_t *in, uint32_t in_len, uint8_t *out) {
+  SHA256_CTX sha256;
+  SHA256_Init(&sha256);
+  SHA256_Update(&sha256, in, in_len);
+  SHA256_Final(out, &sha256);
+}
+
+static inline void get_fs_block_range(uint32_t fd_offset, size_t len, uint32_t *start_block, uint32_t *end_block) {
+  *start_block = fd_offset / FS_BLOCK_SIZE;
+  *end_block = (fd_offset + len - 1) / FS_BLOCK_SIZE;
 }
 
 /******************************************************************************
@@ -41,8 +71,9 @@ inline int is_in_dir(const char *path, const char *directory) {
 
 typedef struct {
   EVP_CIPHER_CTX *ctx;
-  uint8_t counter[AES_BLOCK_SIZE];
-  uint8_t ecount_buf[AES_BLOCK_SIZE];
+  uint32_t last_block;;
+  uint8_t counter[FS_BLOCK_SIZE];
+  uint8_t ecount_buf[FS_BLOCK_SIZE];
 } aes_state_t;
 
 static inline void _sc_aes_handle_errors()
@@ -92,7 +123,7 @@ typedef struct fd_entry {
 } fd_entry_t;
 
 
-inline fd_entry_t *fd_entry_new(const char *filename, const char *component_key,
+static inline fd_entry_t *fd_entry_new(const char *filename, const char *component_key,
                                 int is_binary) {
   fd_entry_t *fd_entry = (fd_entry_t *)malloc(sizeof(fd_entry_t));
   fd_entry->filename = NULL;
@@ -114,7 +145,8 @@ inline fd_entry_t *fd_entry_new(const char *filename, const char *component_key,
       aes_state_t *state = (aes_state_t *)fd_entry->state;
 
       // Init encrypted counter buf
-      memset(state->ecount_buf, 0, 16);
+      memset(state->ecount_buf, 0, FS_BLOCK_SIZE);
+      state->last_block = UINT_MAX;
       // Init counter as 0
       memset(state->counter + 8, 0, 8);
       // DEBUG OPTION: set nonce as g_component_key
@@ -132,7 +164,7 @@ inline fd_entry_t *fd_entry_new(const char *filename, const char *component_key,
   return fd_entry;
 }
 
-inline void fd_entry_free(fd_entry_t *fd_entry) {
+static inline void fd_entry_free(fd_entry_t *fd_entry) {
   free(fd_entry->filename);
   if (fd_entry->state != NULL) {
     if (strcmp(g_seccask_cipher_mode, "Chacha20") == 0) {
