@@ -1750,6 +1750,7 @@ _Py_read(int fd, void *buf, size_t count)
                 printf("ENCFSENCFS read  Prepare test source. Do direct read\n");
             }
         } else {
+            _Py_BEGIN_SUPPRESS_IPH
             if (g_seccask_encfs_is_debug_mode) {
                 if (is_in_dir(entry->filename, "/home/mlcask/sgx/test-source")) {
                     printf("ENCFSENCFS read  BEFOR ENC");
@@ -1765,17 +1766,23 @@ _Py_read(int fd, void *buf, size_t count)
             if (!is_in_dir(entry->filename, "./")) {    // Packing ZIP. Do not check hash
                 off_t cur_offset = lseek(fd, 0, SEEK_CUR);
 
-                char *hash_file_name = (char*) malloc(strlen(entry->filename) + 6);
-                strcpy(hash_file_name, entry->filename);
-                strcat(hash_file_name, ".hash");
-                FILE *hash_file;
+                if (entry->hash_file == NULL) {
+                    char *hash_file_name = (char*) malloc(strlen(entry->filename) + 6);
+                    strcpy(hash_file_name, entry->filename);
+                    strcat(hash_file_name, ".hash");
 
-                hash_file = fopen(hash_file_name, "rb");
-                if (hash_file == NULL) {
-                    printf("UNAUTHORIZED MODIFICATION DETECTED !!! UNAUTHORIZED MODIFICATION DETECTED !!!\n");
-                    printf("FILE: %s\n", entry->filename);
-                    printf("REASON: Cannot open hash file %s\n", hash_file_name);
-                    exit(1);
+                    Py_BEGIN_ALLOW_THREADS
+                    entry->hash_file = fopen(hash_file_name, "rb");
+                    Py_END_ALLOW_THREADS
+
+                    free(hash_file_name);
+
+                    if (entry->hash_file == NULL) {
+                        printf("UNAUTHORIZED MODIFICATION DETECTED !!! UNAUTHORIZED MODIFICATION DETECTED !!!\n");
+                        printf("FILE: %s\n", entry->filename);
+                        printf("REASON: Cannot open hash file %s\n", hash_file_name);
+                        exit(1);
+                    }
                 }
 
                 // Compute hash of ciphertext
@@ -1790,11 +1797,18 @@ _Py_read(int fd, void *buf, size_t count)
                 for (uint32_t i = start_block; i <= end_block; i++) {
                     memset(block_buf, 0, FS_BLOCK_SIZE);
                     lseek(fd, i * FS_BLOCK_SIZE, SEEK_SET);
+
+                    Py_BEGIN_ALLOW_THREADS
                     read(fd, block_buf, FS_BLOCK_SIZE);
+                    Py_END_ALLOW_THREADS
+
                     seccask_sha256(block_buf, FS_BLOCK_SIZE, hash);
 
-                    fseek(hash_file, i * SHA256_DIGEST_LENGTH, SEEK_SET);
-                    fread(correct_hash, 1, SHA256_DIGEST_LENGTH, hash_file);
+                    fseek(entry->hash_file, i * SHA256_DIGEST_LENGTH, SEEK_SET);
+                    
+                    Py_BEGIN_ALLOW_THREADS
+                    fread(correct_hash, 1, SHA256_DIGEST_LENGTH, entry->hash_file);
+                    Py_END_ALLOW_THREADS
 
                     if (memcmp(hash, correct_hash, SHA256_DIGEST_LENGTH) != 0) {
                         printf("UNAUTHORIZED MODIFICATION DETECTED !!! UNAUTHORIZED MODIFICATION DETECTED !!!\n");
@@ -1807,9 +1821,6 @@ _Py_read(int fd, void *buf, size_t count)
                 if (g_seccask_encfs_is_debug_mode) {
                     printf("ENCFSENCFS read  hash end\n");
                 }
-
-                fclose(hash_file);
-                free(hash_file_name);
 
                 free(hash);
                 free(correct_hash);
@@ -1846,6 +1857,7 @@ _Py_read(int fd, void *buf, size_t count)
                 }
                 printf("\n");
             }
+            _Py_END_SUPPRESS_IPH
         }
     }
     //< SECCASK_MODIFIED_END
@@ -1982,17 +1994,27 @@ _Py_write_impl(int fd, const void *buf, size_t count, int gil_held)
             
                 off_t cur_offset = lseek(fd, 0, SEEK_CUR);
 
-                char *hash_file_name = (char*) malloc(strlen(entry->filename) + 6);
-                strcpy(hash_file_name, entry->filename);
-                strcat(hash_file_name, ".hash");
-                FILE *hash_file;
+                if (entry->hash_file == NULL) {
+                    char *hash_file_name = (char*) malloc(strlen(entry->filename) + 6);
+                    strcpy(hash_file_name, entry->filename);
+                    strcat(hash_file_name, ".hash");
 
-                // Create hash file if not exist
-                hash_file = fopen(hash_file_name, "a");
-                fclose(hash_file);
-                hash_file = fopen(hash_file_name, "r+b");
-
-                // fsync(fd);
+                    if (gil_held) {
+                        Py_BEGIN_ALLOW_THREADS
+                        // Create hash file if not exist
+                        entry->hash_file = fopen(hash_file_name, "a");
+                        fclose(entry->hash_file);
+                        entry->hash_file = fopen(hash_file_name, "r+b");
+                        Py_END_ALLOW_THREADS
+                    } else {
+                        // Create hash file if not exist
+                        entry->hash_file = fopen(hash_file_name, "a");
+                        fclose(entry->hash_file);
+                        entry->hash_file = fopen(hash_file_name, "r+b");
+                    }
+                        
+                    free(hash_file_name);
+                }
 
                 // Compute hash of ciphertext
                 unsigned char *hash = (unsigned char*) malloc(SHA256_DIGEST_LENGTH);
@@ -2036,17 +2058,20 @@ _Py_write_impl(int fd, const void *buf, size_t count, int gil_held)
 
                     seccask_sha256(block_buf, FS_BLOCK_SIZE, hash);
 
-                    fseek(hash_file, i * SHA256_DIGEST_LENGTH, SEEK_SET);
-                    fwrite(hash, SHA256_DIGEST_LENGTH, 1, hash_file);
+                    fseek(entry->hash_file, i * SHA256_DIGEST_LENGTH, SEEK_SET);
+                    if (gil_held) {
+                        Py_BEGIN_ALLOW_THREADS
+                        fwrite(hash, SHA256_DIGEST_LENGTH, 1, entry->hash_file);
+                        Py_END_ALLOW_THREADS
+                    } else {
+                        fwrite(hash, SHA256_DIGEST_LENGTH, 1, entry->hash_file);
+                    }
                 }
 
                 if (g_seccask_encfs_is_debug_mode) {
                     printf("ENCFSENCFS write hash end\n");
                 }
 
-                fclose(hash_file);
-
-                free(hash_file_name);
                 free(hash);
                 free(enc_hash);
                 free(block_buf);

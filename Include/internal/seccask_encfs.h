@@ -120,6 +120,7 @@ typedef struct fd_entry {
   char *filename;
   cipher_state_t* state;
   int is_binary;
+  FILE *hash_file;
 } fd_entry_t;
 
 
@@ -128,6 +129,7 @@ static inline fd_entry_t *fd_entry_new(const char *filename, const char *compone
   fd_entry_t *fd_entry = (fd_entry_t *)malloc(sizeof(fd_entry_t));
   fd_entry->filename = NULL;
   fd_entry->state = NULL;
+  fd_entry->hash_file = NULL;
   fd_entry->is_binary = is_binary;
 
   char *a_name = (char *)malloc(strlen(filename) + 1);
@@ -178,8 +180,11 @@ static inline void fd_entry_free(fd_entry_t *fd_entry) {
       printf("ERROR: Unknown cipher mode %s\n", g_seccask_cipher_mode);
       exit(1);
     }
-
-    fd_entry->state = NULL;
+    // fd_entry->state = NULL;
+  }
+  if (fd_entry->hash_file != NULL) {
+    fclose(fd_entry->hash_file);
+    // fd_entry->hash_file = NULL;
   }
   // Do not free the entry since it's handled by g_free()
   // free(fd_entry);
