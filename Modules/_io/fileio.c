@@ -335,7 +335,8 @@ _Py_COMP_DIAG_POP
                     is_in_dir(name, "/home/mlcask/sgx/test-source") ||
                     is_in_dir(name, "././") ||
                     is_in_dir(name, "/home/mlcask/sgx/raw-test-source") || 
-                    is_in_dir(name, "/home/mlcask/sgx/enc-test-source")) {
+                    is_in_dir(name, "/home/mlcask/sgx/enc-test-source") || 
+                    is_in_dir(name, "/mnt/ramdisk/encfs")) {
                     if (g_seccask_encfs_is_debug_mode) {
                         printf("ENCFSENCFS open add + to %s - %s\n", name, "x");
                     }
@@ -354,7 +355,8 @@ _Py_COMP_DIAG_POP
                     is_in_dir(name, "/home/mlcask/sgx/test-source") ||
                     is_in_dir(name, "././") ||
                     is_in_dir(name, "/home/mlcask/sgx/raw-test-source") || 
-                    is_in_dir(name, "/home/mlcask/sgx/enc-test-source")) {
+                    is_in_dir(name, "/home/mlcask/sgx/enc-test-source") || 
+                    is_in_dir(name, "/mnt/ramdisk/encfs")) {
                     if (g_seccask_encfs_is_debug_mode) {
                         printf("ENCFSENCFS open add + to %s - %s\n", name, "r");
                     }
@@ -374,7 +376,8 @@ _Py_COMP_DIAG_POP
                     is_in_dir(name, "/home/mlcask/sgx/test-source") ||
                     is_in_dir(name, "././") ||
                     is_in_dir(name, "/home/mlcask/sgx/raw-test-source") || 
-                    is_in_dir(name, "/home/mlcask/sgx/enc-test-source")) {
+                    is_in_dir(name, "/home/mlcask/sgx/enc-test-source") || 
+                    is_in_dir(name, "/mnt/ramdisk/encfs")) {
                     if (g_seccask_encfs_is_debug_mode) {
                         printf("ENCFSENCFS open add + to %s - %s\n", name, "w");
                     }
@@ -395,7 +398,8 @@ _Py_COMP_DIAG_POP
                     is_in_dir(name, "/home/mlcask/sgx/test-source") ||
                     is_in_dir(name, "././") ||
                     is_in_dir(name, "/home/mlcask/sgx/raw-test-source") || 
-                    is_in_dir(name, "/home/mlcask/sgx/enc-test-source")) {
+                    is_in_dir(name, "/home/mlcask/sgx/enc-test-source") || 
+                    is_in_dir(name, "/mnt/ramdisk/encfs")) {
                     if (g_seccask_encfs_is_debug_mode) {
                         printf("ENCFSENCFS open add + to %s - %s\n", name, "a");
                     }
@@ -533,7 +537,8 @@ _Py_COMP_DIAG_POP
                 is_in_dir(name, "/home/mlcask/sgx/test-source") ||
                 is_in_dir(name, "././") ||
                 is_in_dir(name, "/home/mlcask/sgx/raw-test-source") || 
-                is_in_dir(name, "/home/mlcask/sgx/enc-test-source")
+                is_in_dir(name, "/home/mlcask/sgx/enc-test-source") || 
+                is_in_dir(name, "/mnt/ramdisk/encfs")
             ) && !ends_with(name, ".hash")) {
             if (g_seccask_encfs_is_debug_mode) {
                 printf("ENCFSENCFS open  %s = %d\n", name, self->fd);

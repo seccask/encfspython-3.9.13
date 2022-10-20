@@ -23,6 +23,23 @@ extern int g_seccask_encfs_is_debug_mode;
 
 extern char *g_seccask_cipher_mode;
 
+/******************************************************************************
+ *  AES cipher
+ *****************************************************************************/
+
+typedef struct {
+  EVP_CIPHER_CTX *ctx;
+  uint32_t last_block;;
+  uint8_t counter[FS_BLOCK_SIZE];
+  uint8_t ecount_buf[FS_BLOCK_SIZE];
+} aes_state_t;
+
+static inline void _sc_aes_handle_errors()
+{
+    ERR_print_errors_fp(stderr);
+    exit(1);
+}
+
 
 /******************************************************************************
  *  Utility functions
@@ -47,18 +64,51 @@ static inline int ends_with(const char *str, const char *suffix) {
 }
 
 /**
- * @brief Compute SHA256 hash of the input data
+ * @brief Compute SHA256 hash of the input data (Hardware implementation)
  * 
  * @param in 
  * @param in_len 
  * @param out 
  */
 static inline void seccask_sha256(uint8_t *in, uint32_t in_len, uint8_t *out) {
+  EVP_MD_CTX *mdctx;
+
+	if((mdctx = EVP_MD_CTX_new()) == NULL)
+		_sc_aes_handle_errors();
+
+	if(1 != EVP_DigestInit_ex(mdctx, EVP_sha256(), NULL))
+		_sc_aes_handle_errors();
+
+	if(1 != EVP_DigestUpdate(mdctx, in, in_len))
+		_sc_aes_handle_errors();
+
+	// if((*digest = (unsigned char *)OPENSSL_malloc(EVP_MD_size(EVP_sha256()))) == NULL)
+	// 	_sc_aes_handle_errors();
+
+	if(1 != EVP_DigestFinal_ex(mdctx, out, NULL))
+		_sc_aes_handle_errors();
+
+	EVP_MD_CTX_free(mdctx);
+
+  // SHA256_Init(&sha256);
+  // SHA256_Update(&sha256, in, in_len);
+  // SHA256_Final(out, &sha256);
+}
+
+/**
+ * @brief Compute SHA256 hash of the input data (Software implementation)
+ * 
+ * @param in 
+ * @param in_len 
+ * @param out 
+ */
+static inline void seccask_sha256_sw(uint8_t *in, uint32_t in_len, uint8_t *out) {
   SHA256_CTX sha256;
   SHA256_Init(&sha256);
   SHA256_Update(&sha256, in, in_len);
   SHA256_Final(out, &sha256);
 }
+
 
 static inline void get_fs_block_range(uint32_t fd_offset, size_t len, uint32_t *start_block, uint32_t *end_block) {
   *start_block = fd_offset / FS_BLOCK_SIZE;
@@ -66,24 +116,7 @@ static inline void get_fs_block_range(uint32_t fd_offset, size_t len, uint32_t *
 }
 
 /******************************************************************************
- *  AES block cipher
- *****************************************************************************/
-
-typedef struct {
-  EVP_CIPHER_CTX *ctx;
-  uint32_t last_block;;
-  uint8_t counter[FS_BLOCK_SIZE];
-  uint8_t ecount_buf[FS_BLOCK_SIZE];
-} aes_state_t;
-
-static inline void _sc_aes_handle_errors()
-{
-    ERR_print_errors_fp(stderr);
-    exit(1);
-}
-
-/******************************************************************************
- *  Chacha20 stream cipher
+ *  Chacha20 cipher
  *****************************************************************************/
 
 typedef struct chacha_state {
