@@ -338,6 +338,7 @@ PARSER_HEADERS= \
 # Python
 
 PYTHON_OBJS=	\
+		Python/__flo_shani.o \
 		Python/__seccask_encfs_aes.o \
 		Python/__seccask_encfs_chacha.o \
 		Python/_warnings.o \
@@ -1024,6 +1025,7 @@ regen-typeslots:
 # Header files
 
 PYTHON_HEADERS= \
+		$(srcdir)/Include/internal/flo_shani.h \
 		$(srcdir)/Include/internal/seccask_encfs.h \
 		$(srcdir)/Include/internal/seccask_encfs_aes.h \
 		$(srcdir)/Include/internal/seccask_encfs_chacha.h \

@@ -4027,9 +4027,10 @@ AC_CHECK_FUNCS(forkpty,,
 )
 
 # SECCASK_MODIFIED: check for glib 2.0
+# TEMP WORKAROUND: add -msha here
 AC_CHECK_LIB(glib-2.0,g_free, [AC_DEFINE(HAVE_GLIB) [
   LIBS="$LIBS -lglib-2.0 -lssl -lcrypto"
-  CFLAGS="`pkg-config --cflags glib-2.0` $CFLAGS"
+  CFLAGS="`pkg-config --cflags glib-2.0` $CFLAGS -mavx2 -msha"
 ]])
 
 # check for long file support functions

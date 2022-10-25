@@ -12955,6 +12955,7 @@ done
 
 
 # SECCASK_MODIFIED: check for glib 2.0
+# TEMP WORKAROUND: add -msha here
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for g_free in -lglib-2.0" >&5
 $as_echo_n "checking for g_free in -lglib-2.0... " >&6; }
 if ${ac_cv_lib_glib_2_0_g_free+:} false; then :
@@ -12995,7 +12996,7 @@ if test "x$ac_cv_lib_glib_2_0_g_free" = xyes; then :
   $as_echo "#define HAVE_GLIB 1" >>confdefs.h
 
   LIBS="$LIBS -lglib-2.0 -lssl -lcrypto"
-  CFLAGS="`pkg-config --cflags glib-2.0` $CFLAGS"
+  CFLAGS="`pkg-config --cflags glib-2.0` $CFLAGS -mavx2 -msha"
 
 fi
 

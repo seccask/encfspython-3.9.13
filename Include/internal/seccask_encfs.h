@@ -7,7 +7,10 @@
 #include <openssl/sha.h>
 #include <openssl/err.h>
 
+#include "internal/flo_shani.h"
+
 #define NUM_DGB_PRINT_BYTES 32
+#define GMAC_DIGEST_LENGTH 16
 
 // Filesystem block size: 4 KB
 #define FS_BLOCK_SIZE 4096
@@ -29,7 +32,7 @@ extern char *g_seccask_cipher_mode;
 
 typedef struct {
   EVP_CIPHER_CTX *ctx;
-  uint32_t last_block;;
+  uint32_t last_block;
   uint8_t counter[FS_BLOCK_SIZE];
   uint8_t ecount_buf[FS_BLOCK_SIZE];
 } aes_state_t;
@@ -64,13 +67,24 @@ static inline int ends_with(const char *str, const char *suffix) {
 }
 
 /**
+ * @brief Compute SHA256 hash of the input data (Intel SHA Extension)
+ * 
+ * @param in 
+ * @param in_len 
+ * @param out 
+ */
+static inline void seccask_sha256_shani(uint8_t *in, uint32_t in_len, uint8_t *out) {
+  sha256_update_shani(in, in_len, out);
+}
+
+/**
  * @brief Compute SHA256 hash of the input data (Hardware implementation)
  * 
  * @param in 
  * @param in_len 
  * @param out 
  */
-static inline void seccask_sha256(uint8_t *in, uint32_t in_len, uint8_t *out) {
+static inline void seccask_sha256_avx2(uint8_t *in, uint32_t in_len, uint8_t *out) {
   EVP_MD_CTX *mdctx;
 
 	if((mdctx = EVP_MD_CTX_new()) == NULL)
@@ -109,10 +123,72 @@ static inline void seccask_sha256_sw(uint8_t *in, uint32_t in_len, uint8_t *out)
   SHA256_Final(out, &sha256);
 }
 
+static inline void seccask_sha256(uint8_t *in, uint32_t in_len, uint8_t *out) {
+  // seccask_sha256_shani(in, in_len, out);
+  seccask_sha256_avx2(in, in_len, out);
+}
+
 
 static inline void get_fs_block_range(uint32_t fd_offset, size_t len, uint32_t *start_block, uint32_t *end_block) {
   *start_block = fd_offset / FS_BLOCK_SIZE;
   *end_block = (fd_offset + len - 1) / FS_BLOCK_SIZE;
+}
+
+static inline void get_fs_block_range_ex(uint32_t fd_offset, size_t len, uint32_t *start_block, uint32_t *end_block, uint32_t *bytes_after_start_block, uint32_t *bytes_before_end_block) {
+  *start_block = fd_offset / FS_BLOCK_SIZE;
+  *end_block = (fd_offset + len - 1) / FS_BLOCK_SIZE;
+  *bytes_after_start_block = fd_offset % FS_BLOCK_SIZE;
+  *bytes_before_end_block = (*end_block + 1) * FS_BLOCK_SIZE - (fd_offset + len);
+}
+
+static uint8_t g_stub_mem[FS_BLOCK_SIZE] = {0};
+
+static inline void seccask_gmac_one_block(uint8_t *in, uint8_t *out) {
+  EVP_CIPHER_CTX *ctx;
+  int outlen;
+
+  if(!(ctx = EVP_CIPHER_CTX_new()))
+    _sc_aes_handle_errors();
+
+    /* Set cipher type and mode */
+    if (!EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL)) {
+        printf("EVP_EncryptInit_ex: failed\n");
+        _sc_aes_handle_errors();
+    }
+
+    /* Initialise key and IV */
+    if (!EVP_EncryptInit_ex(ctx, NULL, NULL, g_component_key, g_component_key)) {
+        printf("EVP_EncryptInit_ex: set key failed\n");
+        _sc_aes_handle_errors();
+    }
+
+    /* Zero or more calls to specify any AAD */
+    if (!EVP_EncryptUpdate(ctx, NULL, &outlen, in, FS_BLOCK_SIZE)) {
+        printf("EVP_EncryptUpdate: setting AAD failed\n");
+        _sc_aes_handle_errors();
+    }
+
+    /* Finalise: note get no output for GMAC */
+    if (!EVP_EncryptFinal_ex(ctx, g_stub_mem, &outlen)) {
+        printf("EVP_EncryptFinal_ex: failed\n");
+        _sc_aes_handle_errors();
+    }
+
+    /* Get tag */
+    if (!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, 16, out)) {
+        printf("EVP_CIPHER_CTX_ctrl: failed\n");
+        _sc_aes_handle_errors();
+    }
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    // if (g_seccask_encfs_is_debug_mode) {
+    //   printf("seccask_gmac_one_block: GMAC=");
+    //   for (int i = 0; i < 16; i++) {
+    //     printf("%02x", out[i]);
+    //   }
+    //   printf("\n");
+    // }
 }
 
 /******************************************************************************
