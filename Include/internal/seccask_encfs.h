@@ -26,6 +26,14 @@ extern int g_seccask_encfs_is_debug_mode;
 
 extern char *g_seccask_cipher_mode;
 
+extern uint8_t g_sc_hash[GMAC_DIGEST_LENGTH];
+extern uint8_t g_sc_correct_hash[GMAC_DIGEST_LENGTH];
+extern uint8_t g_sc_block_buf[FS_BLOCK_SIZE];
+
+extern uint8_t *g_sc_enc_buf;
+extern size_t g_sc_enc_buf_size;
+
+
 /******************************************************************************
  *  AES cipher
  *****************************************************************************/
@@ -128,6 +136,10 @@ static inline void seccask_sha256(uint8_t *in, uint32_t in_len, uint8_t *out) {
   seccask_sha256_avx2(in, in_len, out);
 }
 
+static inline void seccask_sha256_fsblock(uint8_t *in, uint8_t *out) {
+  // seccask_sha256_shani(in, FS_BLOCK_SIZE, out);
+  seccask_sha256_avx2(in, FS_BLOCK_SIZE, out);
+}
 
 static inline void get_fs_block_range(uint32_t fd_offset, size_t len, uint32_t *start_block, uint32_t *end_block) {
   *start_block = fd_offset / FS_BLOCK_SIZE;

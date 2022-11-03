@@ -341,6 +341,7 @@ PYTHON_OBJS=	\
 		Python/__flo_shani.o \
 		Python/__seccask_encfs_aes.o \
 		Python/__seccask_encfs_chacha.o \
+		Python/__seccask_encfs_mac.o \
 		Python/_warnings.o \
 		Python/Python-ast.o \
 		Python/asdl.o \
@@ -1029,6 +1030,7 @@ PYTHON_HEADERS= \
 		$(srcdir)/Include/internal/seccask_encfs.h \
 		$(srcdir)/Include/internal/seccask_encfs_aes.h \
 		$(srcdir)/Include/internal/seccask_encfs_chacha.h \
+		$(srcdir)/Include/internal/seccask_encfs_mac.h \
 		$(srcdir)/Include/Python.h \
 		$(srcdir)/Include/abstract.h \
 		$(srcdir)/Include/asdl.h \

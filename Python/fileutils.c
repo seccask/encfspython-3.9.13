@@ -29,13 +29,14 @@ extern int winerror_to_errno(int);
 #include "internal/seccask_encfs.h"
 #include "internal/seccask_encfs_aes.h"
 #include "internal/seccask_encfs_chacha.h"
+#include "internal/seccask_encfs_mac.h"
 
-static uint8_t g_sc_hash[GMAC_DIGEST_LENGTH];
-static uint8_t g_sc_correct_hash[GMAC_DIGEST_LENGTH];
-static uint8_t g_sc_block_buf[FS_BLOCK_SIZE];
+uint8_t g_sc_hash[GMAC_DIGEST_LENGTH] = {0};
+uint8_t g_sc_correct_hash[GMAC_DIGEST_LENGTH] = {0};
+uint8_t g_sc_block_buf[FS_BLOCK_SIZE] = {0};
 
-static uint8_t *g_sc_enc_buf = NULL;
-static size_t g_sc_enc_buf_size = 0;
+uint8_t *g_sc_enc_buf = NULL;
+size_t g_sc_enc_buf_size = 0;
 
 inline static uint8_t *seccask_getbuf(size_t expected_size) {
     if (g_sc_enc_buf_size < expected_size) {
@@ -1808,167 +1809,10 @@ _Py_read(int fd, void *buf, size_t count)
                     }
                 }
 
-                /* Ver1 */
-                // uint8_t *g_sc_hash = (uint8_t *) malloc(GMAC_DIGEST_LENGTH);
-                // uint8_t *g_sc_correct_hash = (uint8_t *) malloc(GMAC_DIGEST_LENGTH);
-                // uint8_t *g_sc_block_buf = (uint8_t *) malloc(FS_BLOCK_SIZE);
-                // uint32_t start_block, end_block;
-                // get_fs_block_range(cur_offset - n, n, &start_block, &end_block);
-                // if (g_seccask_encfs_is_debug_mode) {
-                //     printf("ENCFSENCFS read  hash start_block = %d, end_block = %d\n", start_block, end_block);
-                // }
-
-                // lseek(fd, start_block * FS_BLOCK_SIZE, SEEK_SET);
-                // fseek(entry->hash_file, start_block * GMAC_DIGEST_LENGTH, SEEK_SET);
-
-                // for (uint32_t i = start_block; i <= end_block; i++) {
-                //     if (i == end_block) {
-                //         memset(g_sc_block_buf, 0, FS_BLOCK_SIZE);
-                //     }
-
-                //     Py_BEGIN_ALLOW_THREADS
-                //     read(fd, g_sc_block_buf, FS_BLOCK_SIZE);
-                //     Py_END_ALLOW_THREADS
-
-                //     // seccask_sha256(g_sc_block_buf, FS_BLOCK_SIZE, g_sc_hash);
-                //     seccask_gmac_one_block(g_sc_block_buf, g_sc_hash);
-                    
-                //     Py_BEGIN_ALLOW_THREADS
-                //     fread(g_sc_correct_hash, 1, GMAC_DIGEST_LENGTH, entry->hash_file);
-                //     Py_END_ALLOW_THREADS
-
-                //     if (memcmp(g_sc_hash, g_sc_correct_hash, GMAC_DIGEST_LENGTH) != 0) {
-                //         printf("UNAUTHORIZED MODIFICATION DETECTED !!! UNAUTHORIZED MODIFICATION DETECTED !!!\n");
-                //         printf("FILE: %s\n", entry->filename);
-                //         printf("REASON: Hash of block %d is incorrect\n", i);
-                //         exit(1);
-                //     }
-                // }
-
-                /* Ver1 End*/
-
-                /* Ver2 */
-                uint32_t start_block, end_block, bytes_after_start_block, bytes_before_end_block;
-                get_fs_block_range_ex(cur_offset - n, n, 
-                                      &start_block, &end_block, &bytes_after_start_block, &bytes_before_end_block);
-
-                lseek(fd, start_block * FS_BLOCK_SIZE, SEEK_SET);
-                fseek(entry->hash_file, start_block * GMAC_DIGEST_LENGTH, SEEK_SET);
-
-                if (g_seccask_encfs_is_debug_mode) {
-                    printf("ENCFSENCFS read  hash fd_offset = %u, len = %u, start_block = %u, end_block = %u, bytes_after_start_block = %u, bytes_before_end_block = %u\n", 
-                            cur_offset - n, n, start_block, end_block, bytes_after_start_block, bytes_before_end_block);
-                }
-                
-                uint32_t i = 0;
-                ssize_t read_n = 0;
-                if (bytes_after_start_block > 0) {
-                    Py_BEGIN_ALLOW_THREADS
-                    read_n = read(fd, g_sc_block_buf, bytes_after_start_block);
-                    Py_END_ALLOW_THREADS
-                    if (g_seccask_encfs_is_debug_mode) {
-                        printf("ENCFSENCFS read  hash first block read %d bytes\n", read_n);
-                    }
-
-                    ssize_t remain_bytes = FS_BLOCK_SIZE - bytes_after_start_block;
-                    i += remain_bytes;
-
-                    if (remain_bytes <= n) {
-                        memcpy(g_sc_block_buf + bytes_after_start_block, buf, remain_bytes);
-                        if (g_seccask_encfs_is_debug_mode) {
-                            printf("ENCFSENCFS read  hash first block copy %d bytes to buf\n", remain_bytes);
-                        }
-                    } else {
-                        memcpy(g_sc_block_buf + bytes_after_start_block, buf, n);
-                        i = n;
-                        if (g_seccask_encfs_is_debug_mode) {
-                            printf("ENCFSENCFS read  hash first block copy %d bytes to buf\n", n);
-                        }
-
-                        Py_BEGIN_ALLOW_THREADS
-                        read_n = read(fd, g_sc_block_buf + FS_BLOCK_SIZE - remain_bytes, remain_bytes);
-                        Py_END_ALLOW_THREADS
-
-                        if (read_n < remain_bytes) {
-                            if (g_seccask_encfs_is_debug_mode) {
-                                printf("ENCFSENCFS read  hash first block fill %d bytes with 0\n", remain_bytes - read_n);
-                            }
-                            memset(g_sc_block_buf + FS_BLOCK_SIZE - (remain_bytes - read_n), 0, remain_bytes - read_n);
-                        }
-                    }
-
-                    seccask_gmac_one_block(g_sc_block_buf, g_sc_hash);
-
-                    Py_BEGIN_ALLOW_THREADS
-                    fread(g_sc_correct_hash, 1, GMAC_DIGEST_LENGTH, entry->hash_file);
-                    Py_END_ALLOW_THREADS
-
-                    if (memcmp(g_sc_hash, g_sc_correct_hash, GMAC_DIGEST_LENGTH) != 0) {
-                        printf("UNAUTHORIZED MODIFICATION DETECTED !!! UNAUTHORIZED MODIFICATION DETECTED !!!\n");
-                        printf("FILE: %s\n", entry->filename);
-                        printf("REASON: Hash of block %d is incorrect\n", start_block);
-                        exit(1);
-                    }
-                }
-
-                for (; i < n; i += FS_BLOCK_SIZE) {
-                    if (i + FS_BLOCK_SIZE >= n && bytes_before_end_block > 0) { // the last block requires further reading
-                        memcpy(g_sc_block_buf, buf + i, n - i);
-                        if (g_seccask_encfs_is_debug_mode) {
-                            printf("ENCFSENCFS read  hash last block copy %d bytes to buf\n", n - i);
-                        }
-
-                        lseek(fd, (end_block + 1) * FS_BLOCK_SIZE - bytes_before_end_block, SEEK_SET);
-                        memset(g_sc_block_buf + FS_BLOCK_SIZE - bytes_before_end_block, 0, bytes_before_end_block);
-                        Py_BEGIN_ALLOW_THREADS
-                        read_n = read(fd, g_sc_block_buf + FS_BLOCK_SIZE - bytes_before_end_block, bytes_before_end_block);
-                        Py_END_ALLOW_THREADS
-                        // if (g_seccask_encfs_is_debug_mode) {
-                        //     printf("ENCFSENCFS read  hash last block read %d bytes\n", read_n);
-                        // }
-
-                        // if (read_n < bytes_before_end_block) {
-                        //     if (g_seccask_encfs_is_debug_mode) {
-                        //         printf("ENCFSENCFS read  hash last block fill %d bytes with 0\n", bytes_before_end_block - read_n);
-                        //     }
-                        //     memset(g_sc_block_buf + FS_BLOCK_SIZE - bytes_before_end_block + read_n, 0, bytes_before_end_block - read_n);
-                        // }
-                        
-                        if (g_seccask_encfs_is_debug_mode) {
-                            printf("ENCFSENCFS read  hash last block read %u bytes to buf from offset %u\n", 
-                            bytes_before_end_block,
-                            (end_block + 1) * FS_BLOCK_SIZE - bytes_before_end_block);
-                        }
-
-                        seccask_gmac_one_block(g_sc_block_buf, g_sc_hash);
-                    } else {
-                        seccask_gmac_one_block(buf + i, g_sc_hash);
-                    }
-
-                    // seccask_sha256(g_sc_block_buf, FS_BLOCK_SIZE, g_sc_hash);
-
-                    Py_BEGIN_ALLOW_THREADS
-                    fread(g_sc_correct_hash, 1, GMAC_DIGEST_LENGTH, entry->hash_file);
-                    Py_END_ALLOW_THREADS
-
-                    if (memcmp(g_sc_hash, g_sc_correct_hash, GMAC_DIGEST_LENGTH) != 0) {
-                        printf("UNAUTHORIZED MODIFICATION DETECTED !!! UNAUTHORIZED MODIFICATION DETECTED !!!\n");
-                        printf("FILE: %s\n", entry->filename);
-                        int hash_offset = ftell(entry->hash_file);
-                        printf("REASON: Hash of block %d is incorrect\n", (hash_offset / GMAC_DIGEST_LENGTH) - 1);
-                        printf("Expected: ");
-                        for (int i = 0; i < GMAC_DIGEST_LENGTH; i++) {
-                            printf("%02x", g_sc_correct_hash[i]);
-                        }
-                        printf("\n");
-                        printf("Actual: ");
-                        for (int i = 0; i < GMAC_DIGEST_LENGTH; i++) {
-                            printf("%02x", g_sc_hash[i]);
-                        }
-                        printf("\n");
-                        exit(1);
-                    }
-                }
+                /* Ver 1 */
+                seccask_read_check_mac(fd, cur_offset - n, n, entry->hash_file);
+                /* Ver 2: 2 block read most */
+                // seccask_read_check_mac_2(fd, cur_offset - n, n, entry->hash_file, buf);
 
                 if (g_seccask_encfs_is_debug_mode) {
                     printf("ENCFSENCFS read  hash end\n");
@@ -2171,62 +2015,13 @@ _Py_write_impl(int fd, const void *buf, size_t count, int gil_held)
                     free(hash_file_name);
                 }
 
-                // Compute hash of ciphertext
-                // uint8_t *g_sc_hash = (uint8_t *) malloc(GMAC_DIGEST_LENGTH);
-                // uint8_t *g_sc_correct_hash = (uint8_t *) malloc(GMAC_DIGEST_LENGTH);
-                // uint8_t *g_sc_block_buf = (uint8_t *) malloc(FS_BLOCK_SIZE);
-                uint32_t start_block, end_block;
-                ssize_t hash_n;
-                get_fs_block_range(cur_offset - count, count, &start_block, &end_block);
-                if (g_seccask_encfs_is_debug_mode) {
-                    printf("ENCFSENCFS write hash start_block = %d, end_block = %d\n", start_block, end_block);
-                }
+                /* Ver1 */
+                seccask_write_mac(gil_held, fd, cur_offset - count, count, entry->hash_file);
+                /* Ver1 End */
 
-                // errno = 0;
-                lseek(fd, start_block * FS_BLOCK_SIZE, SEEK_SET);
-                // if (errno) {
-                //     printf("ERROR: lseek() failed with %s\n", strerror(errno));
-                //     exit(1);
-                // }
-                fseek(entry->hash_file, start_block * GMAC_DIGEST_LENGTH, SEEK_SET);
-
-                for (uint32_t i = start_block; i <= end_block; i++) {
-                    if (i == end_block) {
-                        memset(g_sc_block_buf, 0, FS_BLOCK_SIZE);
-                    }
-
-                    if (gil_held) {
-                        Py_BEGIN_ALLOW_THREADS
-                        hash_n = read(fd, g_sc_block_buf, FS_BLOCK_SIZE);
-                        Py_END_ALLOW_THREADS
-                    } else {
-                        hash_n = read(fd, g_sc_block_buf, FS_BLOCK_SIZE);
-                    }
-                    if (hash_n < 0) {
-                        printf("ERROR: read() failed with %s\n", strerror(errno));
-                        exit(1);
-                    }
-
-                    // if (g_seccask_encfs_is_debug_mode) {
-                    //   printf("ENCFSENCFS write block=");
-                    //   for (int i = 0; i < NUM_DGB_PRINT_BYTES; i++) {
-                    //     printf(" %02x", g_sc_block_buf[i]);
-                    //   }
-                    //   printf("\n");
-                    //   fflush(stdout);
-                    // }
-
-                    // seccask_sha256(g_sc_block_buf, FS_BLOCK_SIZE, g_sc_hash);
-                    seccask_gmac_one_block(g_sc_block_buf, g_sc_hash);
-
-                    if (gil_held) {
-                        Py_BEGIN_ALLOW_THREADS
-                        fwrite(g_sc_hash, GMAC_DIGEST_LENGTH, 1, entry->hash_file);
-                        Py_END_ALLOW_THREADS
-                    } else {
-                        fwrite(g_sc_hash, GMAC_DIGEST_LENGTH, 1, entry->hash_file);
-                    }
-                }
+                /* Ver2 */
+                // seccask_write_mac_2(gil_held, fd, cur_offset - count, count, entry->hash_file, enc_buf);
+                /* Ver2 End */
 
                 if (g_seccask_encfs_is_debug_mode) {
                     printf("ENCFSENCFS write hash end\n");
