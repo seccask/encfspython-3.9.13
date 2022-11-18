@@ -2,9 +2,9 @@
 #include "internal/seccask_encfs_mac.h"
 
 /* Option 1: SHA-256 as MAC */
-#define SECCASK_MAC_FUNC seccask_sha256_fsblock
+// #define SECCASK_MAC_FUNC seccask_sha256_fsblock
 /* Option 2: GMAC as MAC (Same as GCM) */
-// #define SECCASK_MAC_FUNC seccask_gmac_one_block
+#define SECCASK_MAC_FUNC seccask_gmac_one_block
 
 /******************************************************************************
  *  Message Authentication Code (MAC) - Generation & Verification

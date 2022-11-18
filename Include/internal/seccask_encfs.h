@@ -14,13 +14,15 @@
 
 // Filesystem block size: 4 KB
 #define FS_BLOCK_SIZE 4096
+// EncFS chunk size (in bytes)
+#define ENCFS_CHUNK_SIZE 1048576
 
 typedef unsigned char uint8_t;
 typedef unsigned int uint32_t;
 // typedef unsigned long long uint64_t;
 
 
-__attribute__((weak)) extern unsigned char *g_component_key;  // 256-bit key
+extern __attribute__((weak)) unsigned char *g_component_key;  // 256-bit key
 extern GHashTable *g_seccask_fd_hashtable;
 extern int g_seccask_encfs_is_debug_mode;
 
@@ -33,6 +35,108 @@ extern uint8_t g_sc_block_buf[FS_BLOCK_SIZE];
 extern uint8_t *g_sc_enc_buf;
 extern size_t g_sc_enc_buf_size;
 
+
+#define SECCASK_PROFILE_IO
+#undef SECCASK_PROFILE_IO
+
+#ifdef SECCASK_PROFILE_IO
+
+extern int g_sc_is_io_time_enabled;
+extern __attribute__((weak)) double g_sc_time_spent_on_io;
+
+
+#include <dlfcn.h>
+/******************************************************************************
+ *  Linux timespec helpers
+ *****************************************************************************/
+#define NSEC_PER_SEC 1000000000
+
+/** \fn struct timespec timespec_normalise(struct timespec ts)
+ *  \brief Normalises a timespec structure.
+ *
+ * Returns a normalised version of a timespec structure, according to the
+ * following rules:
+ *
+ * 1) If tv_nsec is >=1,000,000,00 or <=-1,000,000,000, flatten the surplus
+ *    nanoseconds into the tv_sec field.
+ *
+ * 2) If tv_nsec is negative, decrement tv_sec and roll tv_nsec up to represent
+ *    the same value attainable by ADDING nanoseconds to tv_sec.
+*/
+static inline struct timespec timespec_normalise(struct timespec ts)
+{
+	while(ts.tv_nsec >= NSEC_PER_SEC)
+	{
+		++(ts.tv_sec);
+		ts.tv_nsec -= NSEC_PER_SEC;
+	}
+	
+	while(ts.tv_nsec <= -NSEC_PER_SEC)
+	{
+		--(ts.tv_sec);
+		ts.tv_nsec += NSEC_PER_SEC;
+	}
+	
+	if(ts.tv_nsec < 0)
+	{
+		/* Negative nanoseconds isn't valid according to POSIX.
+		 * Decrement tv_sec and roll tv_nsec over.
+		*/
+		
+		--(ts.tv_sec);
+		ts.tv_nsec = (NSEC_PER_SEC + ts.tv_nsec);
+	}
+	
+	return ts;
+}
+
+
+/** \fn double timespec_to_double(struct timespec ts)
+ *  \brief Converts a timespec to a fractional number of seconds.
+*/
+static inline double timespec_to_double(struct timespec ts)
+{
+	return ((double)(ts.tv_sec) + ((double)(ts.tv_nsec) / NSEC_PER_SEC));
+}
+
+/** \fn struct timespec timespec_sub(struct timespec ts1, struct timespec ts2)
+ *  \brief Returns the result of subtracting ts2 from ts1.
+*/
+static inline struct timespec timespec_sub(struct timespec ts1, struct timespec ts2)
+{
+	/* Normalise inputs to prevent tv_nsec rollover if whole-second values
+	 * are packed in it.
+	*/
+	ts1 = timespec_normalise(ts1);
+	ts2 = timespec_normalise(ts2);
+	
+	ts1.tv_sec  -= ts2.tv_sec;
+	ts1.tv_nsec -= ts2.tv_nsec;
+	
+	return timespec_normalise(ts1);
+}
+
+/******************************************************************************
+ *  Linux timespec helpers END
+ *****************************************************************************/
+
+
+  // printf("%s\n", __func__);
+#define SECCASK_PROFILE_IO_INIT \
+  struct timespec time1, time2; \
+  clock_gettime(CLOCK_REALTIME, &time1); 
+
+#define SECCASK_PROFILE_IO_RECORD \
+  if (g_sc_is_io_time_enabled) { \
+    clock_gettime(CLOCK_REALTIME, &time2); \
+    double time_spent = timespec_to_double(timespec_sub(time2, time1)); \
+    g_sc_time_spent_on_io += time_spent; \
+  }
+
+#else
+#define SECCASK_PROFILE_IO_INIT ;
+#define SECCASK_PROFILE_IO_RECORD ;
+#endif
 
 /******************************************************************************
  *  AES cipher

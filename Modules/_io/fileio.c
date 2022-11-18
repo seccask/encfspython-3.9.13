@@ -26,6 +26,10 @@ GHashTable *g_seccask_fd_hashtable = NULL;
 int g_seccask_encfs_is_debug_mode = 0;
 // Cipher Mode: "AES-256-CTR", "Chacha20"
 char *g_seccask_cipher_mode = "AES-256-CTR";
+
+
+int g_sc_is_io_time_enabled = 0;
+
 //< SECCASK_MODIFIED_END
 
 /*
@@ -162,6 +166,7 @@ static PyObject *
 _io_FileIO_close_impl(fileio *self)
 /*[clinic end generated code: output=7737a319ef3bad0b input=f35231760d54a522]*/
 {
+    SECCASK_PROFILE_IO_INIT
     PyObject *res;
     PyObject *exc, *val, *tb;
     int rc;
@@ -170,6 +175,7 @@ _io_FileIO_close_impl(fileio *self)
                                        &PyId_close, (PyObject *)self);
     if (!self->closefd) {
         self->fd = -1;
+        SECCASK_PROFILE_IO_RECORD
         return res;
     }
     if (res == NULL)
@@ -186,6 +192,7 @@ _io_FileIO_close_impl(fileio *self)
         _PyErr_ChainExceptions(exc, val, tb);
     if (rc < 0)
         Py_CLEAR(res);
+    SECCASK_PROFILE_IO_RECORD
     return res;
 }
 
@@ -243,9 +250,10 @@ _io_FileIO___init___impl(fileio *self, PyObject *nameobj, const char *mode,
                          int closefd, PyObject *opener)
 /*[clinic end generated code: output=23413f68e6484bbd input=1596c9157a042a39]*/
 {
-//< SECCASK_MODIFIED_START
-int is_binary = 0;
-//< SECCASK_MODIFIED_END
+    SECCASK_PROFILE_IO_INIT
+    //< SECCASK_MODIFIED_START
+    int is_binary = 0;
+    //< SECCASK_MODIFIED_END
 
 #ifdef MS_WINDOWS
     Py_UNICODE *widename = NULL;
@@ -272,8 +280,10 @@ int is_binary = 0;
     if (self->fd >= 0) {
         if (self->closefd) {
             /* Have to close the existing file first. */
-            if (internal_close(self) < 0)
+            if (internal_close(self) < 0) {
+                SECCASK_PROFILE_IO_RECORD
                 return -1;
+            }
         }
         else
             self->fd = -1;
@@ -282,6 +292,7 @@ int is_binary = 0;
     if (PyFloat_Check(nameobj)) {
         PyErr_SetString(PyExc_TypeError,
                         "integer argument expected, got float");
+        SECCASK_PROFILE_IO_RECORD
         return -1;
     }
 
@@ -290,6 +301,7 @@ int is_binary = 0;
         if (!PyErr_Occurred()) {
             PyErr_SetString(PyExc_ValueError,
                             "negative file descriptor");
+            SECCASK_PROFILE_IO_RECORD
             return -1;
         }
         PyErr_Clear();
@@ -298,16 +310,20 @@ int is_binary = 0;
     if (fd < 0) {
 #ifdef MS_WINDOWS
         if (!PyUnicode_FSDecoder(nameobj, &stringobj)) {
+            SECCASK_PROFILE_IO_RECORD
             return -1;
         }
 _Py_COMP_DIAG_PUSH
 _Py_COMP_DIAG_IGNORE_DEPR_DECLS
         widename = PyUnicode_AsUnicode(stringobj);
 _Py_COMP_DIAG_POP
-        if (widename == NULL)
+        if (widename == NULL) {
+            SECCASK_PROFILE_IO_RECORD
             return -1;
+        }
 #else
         if (!PyUnicode_FSConverter(nameobj, &stringobj)) {
+            SECCASK_PROFILE_IO_RECORD
             return -1;
         }
         name = PyBytes_AS_STRING(stringobj);
@@ -529,6 +545,11 @@ _Py_COMP_DIAG_POP
                     NULL);
 
             g_seccask_encfs_is_debug_mode = getenv("SECCASK_DEBUG_ENCFS") != NULL;
+
+            g_sc_is_io_time_enabled = getenv("SECCASK_PROFILE_IO") != NULL;
+            if (g_sc_is_io_time_enabled) {
+                printf("SECCASK_PROFILE_IO is enabled\n");
+            }
         };
 
         // printf("LOGLOGLOG open(\"%s\") = %d\n", name, self->fd);
@@ -619,6 +640,7 @@ _Py_COMP_DIAG_POP
 
  done:
     Py_CLEAR(stringobj);
+    SECCASK_PROFILE_IO_RECORD
     return ret;
 }
 
@@ -676,9 +698,16 @@ static PyObject *
 _io_FileIO_fileno_impl(fileio *self)
 /*[clinic end generated code: output=a9626ce5398ece90 input=0b9b2de67335ada3]*/
 {
-    if (self->fd < 0)
-        return err_closed();
-    return PyLong_FromLong((long) self->fd);
+    SECCASK_PROFILE_IO_INIT
+    PyObject *result;
+    if (self->fd < 0) {
+        result = err_closed();
+        SECCASK_PROFILE_IO_RECORD
+        return result;
+    }
+    result = PyLong_FromLong((long) self->fd);
+    SECCASK_PROFILE_IO_RECORD
+    return result;
 }
 
 /*[clinic input]
@@ -691,9 +720,16 @@ static PyObject *
 _io_FileIO_readable_impl(fileio *self)
 /*[clinic end generated code: output=640744a6150fe9ba input=a3fdfed6eea721c5]*/
 {
-    if (self->fd < 0)
-        return err_closed();
-    return PyBool_FromLong((long) self->readable);
+    SECCASK_PROFILE_IO_INIT
+    PyObject *result;
+    if (self->fd < 0) {
+        result = err_closed();
+        SECCASK_PROFILE_IO_RECORD
+        return result;
+    }
+    result = PyBool_FromLong((long) self->readable);
+    SECCASK_PROFILE_IO_RECORD
+    return result;
 }
 
 /*[clinic input]
@@ -706,9 +742,16 @@ static PyObject *
 _io_FileIO_writable_impl(fileio *self)
 /*[clinic end generated code: output=96cefc5446e89977 input=c204a808ca2e1748]*/
 {
-    if (self->fd < 0)
-        return err_closed();
-    return PyBool_FromLong((long) self->writable);
+    SECCASK_PROFILE_IO_INIT
+    PyObject *result;
+    if (self->fd < 0) {
+        result = err_closed();
+        SECCASK_PROFILE_IO_RECORD
+        return result;
+    }
+    result = PyBool_FromLong((long) self->writable);
+    SECCASK_PROFILE_IO_RECORD
+    return result;
 }
 
 /*[clinic input]
@@ -721,8 +764,13 @@ static PyObject *
 _io_FileIO_seekable_impl(fileio *self)
 /*[clinic end generated code: output=47909ca0a42e9287 input=c8e5554d2fd63c7f]*/
 {
-    if (self->fd < 0)
-        return err_closed();
+    SECCASK_PROFILE_IO_INIT
+    PyObject *result;
+    if (self->fd < 0) {
+        result = err_closed();
+        SECCASK_PROFILE_IO_RECORD
+        return result;
+    }
     if (self->seekable < 0) {
         /* portable_lseek() sets the seekable attribute */
         PyObject *pos = portable_lseek(self, NULL, SEEK_CUR, false);
@@ -734,7 +782,9 @@ _io_FileIO_seekable_impl(fileio *self)
             Py_DECREF(pos);
         }
     }
-    return PyBool_FromLong((long) self->seekable);
+    result = PyBool_FromLong((long) self->seekable);
+    SECCASK_PROFILE_IO_RECORD
+    return result;
 }
 
 /*[clinic input]
@@ -749,13 +799,21 @@ static PyObject *
 _io_FileIO_readinto_impl(fileio *self, Py_buffer *buffer)
 /*[clinic end generated code: output=b01a5a22c8415cb4 input=4721d7b68b154eaf]*/
 {
+    SECCASK_PROFILE_IO_INIT
+    PyObject *result;
     Py_ssize_t n;
     int err;
 
-    if (self->fd < 0)
-        return err_closed();
-    if (!self->readable)
-        return err_mode("reading");
+    if (self->fd < 0) {
+        result = err_closed();
+        SECCASK_PROFILE_IO_RECORD
+        return result;
+    }
+    if (!self->readable) {
+        result = err_mode("reading");
+        SECCASK_PROFILE_IO_RECORD
+        return result;
+    }
 
     n = _Py_read(self->fd, buffer->buf, buffer->len);
     /* copy errno because PyBuffer_Release() can indirectly modify it */
@@ -766,10 +824,13 @@ _io_FileIO_readinto_impl(fileio *self, Py_buffer *buffer)
             PyErr_Clear();
             Py_RETURN_NONE;
         }
+        SECCASK_PROFILE_IO_RECORD
         return NULL;
     }
 
-    return PyLong_FromSsize_t(n);
+    result = PyLong_FromSsize_t(n);
+    SECCASK_PROFILE_IO_RECORD
+    return result;
 }
 
 static size_t
@@ -804,6 +865,8 @@ static PyObject *
 _io_FileIO_readall_impl(fileio *self)
 /*[clinic end generated code: output=faa0292b213b4022 input=dbdc137f55602834]*/
 {
+    SECCASK_PROFILE_IO_INIT
+    PyObject *sc_result;
     struct _Py_stat_struct status;
     Py_off_t pos, end;
     PyObject *result;
@@ -812,8 +875,11 @@ _io_FileIO_readall_impl(fileio *self)
     size_t bufsize;
     int fstat_result;
 
-    if (self->fd < 0)
-        return err_closed();
+    if (self->fd < 0) {
+        sc_result = err_closed();
+        SECCASK_PROFILE_IO_RECORD
+        return sc_result;
+    }
 
     Py_BEGIN_ALLOW_THREADS
     _Py_BEGIN_SUPPRESS_IPH
@@ -842,8 +908,10 @@ _io_FileIO_readall_impl(fileio *self)
     }
 
     result = PyBytes_FromStringAndSize(NULL, bufsize);
-    if (result == NULL)
+    if (result == NULL) {
+        SECCASK_PROFILE_IO_RECORD
         return NULL;
+    }
 
     while (1) {
         if (bytes_read >= (Py_ssize_t)bufsize) {
@@ -853,12 +921,15 @@ _io_FileIO_readall_impl(fileio *self)
                                 "unbounded read returned more bytes "
                                 "than a Python bytes object can hold");
                 Py_DECREF(result);
+                SECCASK_PROFILE_IO_RECORD
                 return NULL;
             }
 
             if (PyBytes_GET_SIZE(result) < (Py_ssize_t)bufsize) {
-                if (_PyBytes_Resize(&result, bufsize) < 0)
+                if (_PyBytes_Resize(&result, bufsize) < 0) {
+                    SECCASK_PROFILE_IO_RECORD
                     return NULL;
+                }
             }
         }
 
@@ -877,6 +948,7 @@ _io_FileIO_readall_impl(fileio *self)
                 Py_RETURN_NONE;
             }
             Py_DECREF(result);
+            SECCASK_PROFILE_IO_RECORD
             return NULL;
         }
         bytes_read += n;
@@ -884,9 +956,12 @@ _io_FileIO_readall_impl(fileio *self)
     }
 
     if (PyBytes_GET_SIZE(result) > bytes_read) {
-        if (_PyBytes_Resize(&result, bytes_read) < 0)
+        if (_PyBytes_Resize(&result, bytes_read) < 0) {
+            SECCASK_PROFILE_IO_RECORD
             return NULL;
+        }
     }
+    SECCASK_PROFILE_IO_RECORD
     return result;
 }
 
@@ -906,14 +981,22 @@ static PyObject *
 _io_FileIO_read_impl(fileio *self, Py_ssize_t size)
 /*[clinic end generated code: output=42528d39dd0ca641 input=bec9a2c704ddcbc9]*/
 {
+    SECCASK_PROFILE_IO_INIT
+    PyObject *result;
     char *ptr;
     Py_ssize_t n;
     PyObject *bytes;
 
-    if (self->fd < 0)
-        return err_closed();
-    if (!self->readable)
-        return err_mode("reading");
+    if (self->fd < 0) {
+        result = err_closed();
+        SECCASK_PROFILE_IO_RECORD
+        return result;
+    }
+    if (!self->readable) {
+        result = err_mode("reading");
+        SECCASK_PROFILE_IO_RECORD
+        return result;
+    }
 
     if (size < 0)
         return _io_FileIO_readall_impl(self);
@@ -923,8 +1006,10 @@ _io_FileIO_read_impl(fileio *self, Py_ssize_t size)
     }
 
     bytes = PyBytes_FromStringAndSize(NULL, size);
-    if (bytes == NULL)
+    if (bytes == NULL) {
+        SECCASK_PROFILE_IO_RECORD
         return NULL;
+    }
     ptr = PyBytes_AS_STRING(bytes);
 
     n = _Py_read(self->fd, ptr, size);
@@ -936,16 +1021,19 @@ _io_FileIO_read_impl(fileio *self, Py_ssize_t size)
             PyErr_Clear();
             Py_RETURN_NONE;
         }
+        SECCASK_PROFILE_IO_RECORD
         return NULL;
     }
 
     if (n != size) {
         if (_PyBytes_Resize(&bytes, n) < 0) {
             Py_CLEAR(bytes);
+            SECCASK_PROFILE_IO_RECORD
             return NULL;
         }
     }
 
+    SECCASK_PROFILE_IO_RECORD
     return (PyObject *) bytes;
 }
 
@@ -965,13 +1053,21 @@ static PyObject *
 _io_FileIO_write_impl(fileio *self, Py_buffer *b)
 /*[clinic end generated code: output=b4059db3d363a2f7 input=6e7908b36f0ce74f]*/
 {
+    SECCASK_PROFILE_IO_INIT
+    PyObject *result;
     Py_ssize_t n;
     int err;
 
-    if (self->fd < 0)
-        return err_closed();
-    if (!self->writable)
-        return err_mode("writing");
+    if (self->fd < 0) {
+        result = err_closed();
+        SECCASK_PROFILE_IO_RECORD
+        return result;
+    }
+    if (!self->writable) {
+        result = err_mode("writing");
+        SECCASK_PROFILE_IO_RECORD
+        return result;
+    }
 
     n = _Py_write(self->fd, b->buf, b->len);
     /* copy errno because PyBuffer_Release() can indirectly modify it */
@@ -982,10 +1078,13 @@ _io_FileIO_write_impl(fileio *self, Py_buffer *b)
             PyErr_Clear();
             Py_RETURN_NONE;
         }
+        SECCASK_PROFILE_IO_RECORD
         return NULL;
     }
 
-    return PyLong_FromSsize_t(n);
+    result = PyLong_FromSsize_t(n);
+    SECCASK_PROFILE_IO_RECORD
+    return result;
 }
 
 /* XXX Windows support below is likely incomplete */
@@ -1079,10 +1178,17 @@ static PyObject *
 _io_FileIO_seek_impl(fileio *self, PyObject *pos, int whence)
 /*[clinic end generated code: output=c976acdf054e6655 input=0439194b0774d454]*/
 {
-    if (self->fd < 0)
-        return err_closed();
+    SECCASK_PROFILE_IO_INIT
+    PyObject *result;
+    if (self->fd < 0) {
+        result = err_closed();
+        SECCASK_PROFILE_IO_RECORD
+        return result;
+    }
 
-    return portable_lseek(self, pos, whence, false);
+    result = portable_lseek(self, pos, whence, false);
+    SECCASK_PROFILE_IO_RECORD
+    return result;
 }
 
 /*[clinic input]
@@ -1097,10 +1203,17 @@ static PyObject *
 _io_FileIO_tell_impl(fileio *self)
 /*[clinic end generated code: output=ffe2147058809d0b input=807e24ead4cec2f9]*/
 {
-    if (self->fd < 0)
-        return err_closed();
+    SECCASK_PROFILE_IO_INIT
+    PyObject *result;
+    if (self->fd < 0) {
+        result = err_closed();
+        SECCASK_PROFILE_IO_RECORD
+        return result;
+    }
 
-    return portable_lseek(self, NULL, 1, false);
+    result = portable_lseek(self, NULL, 1, false);
+    SECCASK_PROFILE_IO_RECORD
+    return result;
 }
 
 #ifdef HAVE_FTRUNCATE
@@ -1119,21 +1232,31 @@ static PyObject *
 _io_FileIO_truncate_impl(fileio *self, PyObject *posobj)
 /*[clinic end generated code: output=e49ca7a916c176fa input=b0ac133939823875]*/
 {
+    SECCASK_PROFILE_IO_INIT
+    PyObject *result;
     Py_off_t pos;
     int ret;
     int fd;
 
     fd = self->fd;
-    if (fd < 0)
-        return err_closed();
-    if (!self->writable)
-        return err_mode("writing");
+    if (fd < 0) {
+        result = err_closed();
+        SECCASK_PROFILE_IO_RECORD
+        return result;
+    }
+    if (!self->writable) {
+        result = err_mode("writing");
+        SECCASK_PROFILE_IO_RECORD
+        return result;
+    }
 
     if (posobj == Py_None) {
         /* Get the current position. */
         posobj = portable_lseek(self, NULL, 1, false);
-        if (posobj == NULL)
+        if (posobj == NULL) {
+            SECCASK_PROFILE_IO_RECORD
             return NULL;
+        }
     }
     else {
         Py_INCREF(posobj);
@@ -1146,6 +1269,7 @@ _io_FileIO_truncate_impl(fileio *self, PyObject *posobj)
 #endif
     if (PyErr_Occurred()){
         Py_DECREF(posobj);
+        SECCASK_PROFILE_IO_RECORD
         return NULL;
     }
 
@@ -1163,9 +1287,11 @@ _io_FileIO_truncate_impl(fileio *self, PyObject *posobj)
     if (ret != 0) {
         Py_DECREF(posobj);
         PyErr_SetFromErrno(PyExc_OSError);
+        SECCASK_PROFILE_IO_RECORD
         return NULL;
     }
 
+    SECCASK_PROFILE_IO_RECORD
     return posobj;
 }
 #endif /* HAVE_FTRUNCATE */
@@ -1240,16 +1366,25 @@ static PyObject *
 _io_FileIO_isatty_impl(fileio *self)
 /*[clinic end generated code: output=932c39924e9a8070 input=cd94ca1f5e95e843]*/
 {
+    SECCASK_PROFILE_IO_INIT
+    PyObject *result;
     long res;
 
-    if (self->fd < 0)
-        return err_closed();
+    if (self->fd < 0) {
+        result = err_closed();
+        SECCASK_PROFILE_IO_RECORD
+        return result;
+    }
+
     Py_BEGIN_ALLOW_THREADS
     _Py_BEGIN_SUPPRESS_IPH
     res = isatty(self->fd);
     _Py_END_SUPPRESS_IPH
     Py_END_ALLOW_THREADS
-    return PyBool_FromLong(res);
+
+    result = PyBool_FromLong(res);
+    SECCASK_PROFILE_IO_RECORD
+    return result;
 }
 
 #include "clinic/fileio.c.h"

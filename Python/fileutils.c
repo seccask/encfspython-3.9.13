@@ -1445,6 +1445,7 @@ _Py_set_inheritable_async_safe(int fd, int inheritable, int *atomic_flag_works)
 static int
 _Py_open_impl(const char *pathname, int flags, int gil_held)
 {
+    SECCASK_PROFILE_IO_INIT
     int fd;
     int async_err = 0;
 #ifndef MS_WINDOWS
@@ -1463,10 +1464,12 @@ _Py_open_impl(const char *pathname, int flags, int gil_held)
     if (gil_held) {
         PyObject *pathname_obj = PyUnicode_DecodeFSDefault(pathname);
         if (pathname_obj == NULL) {
+            SECCASK_PROFILE_IO_RECORD
             return -1;
         }
         if (PySys_Audit("open", "OOi", pathname_obj, Py_None, flags) < 0) {
             Py_DECREF(pathname_obj);
+            SECCASK_PROFILE_IO_RECORD
             return -1;
         }
 
@@ -1478,28 +1481,34 @@ _Py_open_impl(const char *pathname, int flags, int gil_held)
                  && errno == EINTR && !(async_err = PyErr_CheckSignals()));
         if (async_err) {
             Py_DECREF(pathname_obj);
+            SECCASK_PROFILE_IO_RECORD
             return -1;
         }
         if (fd < 0) {
             PyErr_SetFromErrnoWithFilenameObjects(PyExc_OSError, pathname_obj, NULL);
             Py_DECREF(pathname_obj);
+            SECCASK_PROFILE_IO_RECORD
             return -1;
         }
         Py_DECREF(pathname_obj);
     }
     else {
         fd = open(pathname, flags);
-        if (fd < 0)
+        if (fd < 0) {
+            SECCASK_PROFILE_IO_RECORD
             return -1;
+        }
     }
 
 #ifndef MS_WINDOWS
     if (set_inheritable(fd, 0, gil_held, atomic_flag_works) < 0) {
         close(fd);
+        SECCASK_PROFILE_IO_RECORD
         return -1;
     }
 #endif
 
+    SECCASK_PROFILE_IO_RECORD
     return fd;
 }
 
@@ -1581,23 +1590,30 @@ _Py_wfopen(const wchar_t *path, const wchar_t *mode)
 FILE*
 _Py_fopen(const char *pathname, const char *mode)
 {
+    SECCASK_PROFILE_IO_INIT
     PyObject *pathname_obj = PyUnicode_DecodeFSDefault(pathname);
     if (pathname_obj == NULL) {
+        SECCASK_PROFILE_IO_RECORD
         return NULL;
     }
     if (PySys_Audit("open", "Osi", pathname_obj, mode, 0) < 0) {
         Py_DECREF(pathname_obj);
+        SECCASK_PROFILE_IO_RECORD
         return NULL;
     }
     Py_DECREF(pathname_obj);
 
     FILE *f = fopen(pathname, mode);
-    if (f == NULL)
-        return NULL;
-    if (make_non_inheritable(fileno(f)) < 0) {
-        fclose(f);
+    if (f == NULL) {
+        SECCASK_PROFILE_IO_RECORD
         return NULL;
     }
+    if (make_non_inheritable(fileno(f)) < 0) {
+        fclose(f);
+        SECCASK_PROFILE_IO_RECORD
+        return NULL;
+    }
+    SECCASK_PROFILE_IO_RECORD
     return f;
 }
 
