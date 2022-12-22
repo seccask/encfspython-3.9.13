@@ -10,12 +10,10 @@
 #include "internal/flo_shani.h"
 
 #define NUM_DGB_PRINT_BYTES 32
-#define GMAC_DIGEST_LENGTH 16
 
-// Filesystem block size: 4 KB
+// Filesystem block size (in bytes)
 #define FS_BLOCK_SIZE 4096
-// EncFS chunk size (in bytes)
-#define ENCFS_CHUNK_SIZE 1048576
+#define GMAC_DIGEST_LENGTH 16
 
 typedef unsigned char uint8_t;
 typedef unsigned int uint32_t;

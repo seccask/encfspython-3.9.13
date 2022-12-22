@@ -1726,6 +1726,8 @@ _Py_COMP_DIAG_POP
 Py_ssize_t
 _Py_read(int fd, void *buf, size_t count)
 {
+    SECCASK_PROFILE_IO_INIT
+
     Py_ssize_t n;
     int err;
     int async_err = 0;
@@ -1871,6 +1873,12 @@ _Py_read(int fd, void *buf, size_t count)
                 printf("\n");
             }
             _Py_END_SUPPRESS_IPH
+
+            // if (g_sc_is_io_time_enabled) {
+            //     clock_gettime(CLOCK_REALTIME, &time2);
+            //     double time_spent = timespec_to_double(timespec_sub(time2, time1));
+            //     printf("IOPROFILE type,expect,actual,time %s %lu %lu %lf\n", "Read", count, n, time_spent);
+            // }
         }
     }
     //< SECCASK_MODIFIED_END
@@ -1881,6 +1889,8 @@ _Py_read(int fd, void *buf, size_t count)
 static Py_ssize_t
 _Py_write_impl(int fd, const void *buf, size_t count, int gil_held)
 {
+    SECCASK_PROFILE_IO_INIT
+
     Py_ssize_t n;
     int err;
     int async_err = 0;
@@ -2049,6 +2059,12 @@ _Py_write_impl(int fd, const void *buf, size_t count, int gil_held)
 
                 lseek(fd, cur_offset, SEEK_SET);
                 _Py_END_SUPPRESS_IPH
+                
+                // if (g_sc_is_io_time_enabled) {
+                //     clock_gettime(CLOCK_REALTIME, &time2);
+                //     double time_spent = timespec_to_double(timespec_sub(time2, time1));
+                //     printf("IOPROFILE type,expect,actual,time %s %lu %lu %lf\n", "Write", count, count, time_spent);
+                // }
             }
         }
     }

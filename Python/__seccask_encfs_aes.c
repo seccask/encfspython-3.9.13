@@ -235,9 +235,6 @@ inline void *aes_ctr_encdec_ex(aes_state_t *state, int fd, const uint8_t *src,
     uint8_t *restrict s = curr_src;
     uint8_t *restrict d = curr_dest;
     uint8_t *restrict e = state->ecount_buf;
-    // uint8_t * s = curr_src;
-    // uint8_t * d = curr_dest;
-    // uint8_t * e = state->ecount_buf;
 
     for (int i = 0; i < FS_BLOCK_SIZE; i++) {
       d[i] = s[i] ^ e[i];

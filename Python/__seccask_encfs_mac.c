@@ -209,7 +209,18 @@ void seccask_read_check_mac(int fd, off_t start_offset,
     if (memcmp(g_sc_hash, g_sc_correct_hash, GMAC_DIGEST_LENGTH) != 0) {
       printf("UNAUTHORIZED MODIFICATION DETECTED !!! UNAUTHORIZED MODIFICATION DETECTED !!!\n");
       // printf("FILE: %s\n",entry->filename);
-      printf("REASON: Hash of block %d is incorrect\n", i); exit(1);
+      printf("REASON: Hash of block %d is incorrect\n", i);
+      printf("Expected: ");
+      for (int i = 0; i < GMAC_DIGEST_LENGTH; i++) {
+        printf("%02x", g_sc_correct_hash[i]);
+      }
+      printf("\n");
+      printf("Actual: ");
+      for (int i = 0; i < GMAC_DIGEST_LENGTH; i++) {
+        printf("%02x", g_sc_hash[i]);
+      }
+      printf("\n");
+      exit(1);
     }
   }
 }
